@@ -75,6 +75,8 @@ test(
     const User = require('../../models/User');
     const Idea = require('../../models/Idea');
     const Match = require('../../models/Match');
+    const Invitation = require('../../models/Invitation');
+    const Team = require('../../models/Team');
     const { searchMatches, getCandidateMatch } = require('../../controllers/matchingController');
 
     await mongoose.connect(mongoUri.trim(), {
@@ -88,10 +90,14 @@ test(
       users: [],
       ideas: [],
       matches: [],
+      invitations: [],
+      teams: [],
     };
 
     t.after(async () => {
       if (fixtureIds.matches.length) await Match.deleteMany({ _id: { $in: fixtureIds.matches } });
+      if (fixtureIds.invitations.length) await Invitation.deleteMany({ _id: { $in: fixtureIds.invitations } });
+      if (fixtureIds.teams.length) await Team.deleteMany({ _id: { $in: fixtureIds.teams } });
       if (fixtureIds.ideas.length) await Idea.deleteMany({ _id: { $in: fixtureIds.ideas } });
       if (fixtureIds.users.length) await User.deleteMany({ _id: { $in: fixtureIds.users } });
       await Match.deleteMany({ ideaId: { $in: fixtureIds.ideas } });
@@ -242,6 +248,13 @@ test(
 
     {
       const res = createMockRes();
+      await searchMatches(authReq(founder.firebaseUid, { ideaId: approvedIdea._id.toString() }), res);
+      assert.equal(res.statusCode, 200);
+      assert.ok(res.body.matches.every((match) => String(match.candidate.id) !== String(founder._id)));
+    }
+
+    {
+      const res = createMockRes();
       await searchMatches(
         authReq(founder.firebaseUid, {
           ideaId: approvedIdea._id.toString(),
@@ -264,6 +277,47 @@ test(
       assert.equal(res.body.matches[0].explanation.scoringVersion, 'v1');
       assert.ok(res.body.pagination);
       assert.equal(res.body.pagination.page, 1);
+    }
+
+    {
+      const invitation = await Invitation.create({
+        ideaId: approvedIdea._id,
+        fromFounder: founder._id,
+        toCandidate: partialCandidate._id,
+        role: 'Backend Developer',
+        matchContext: {
+          score: 50,
+          matchedSkills: ['Node.js'],
+          missingSkills: ['MongoDB'],
+          scoringVersion: 'v1',
+        },
+        status: 'Pending',
+      });
+      fixtureIds.invitations.push(invitation._id);
+
+      const team = await Team.create({
+        ideaId: approvedIdea._id,
+        founderId: founder._id,
+        name: 'Approved Matching Team',
+        members: [{ userId: strongCandidate._id, role: 'Backend Developer', invitationId: invitation._id }],
+      });
+      fixtureIds.teams.push(team._id);
+
+      const res = createMockRes();
+      await searchMatches(
+        authReq(founder.firebaseUid, {
+          ideaId: approvedIdea._id.toString(),
+          minScore: '0',
+        }),
+        res,
+      );
+      assert.equal(res.statusCode, 200);
+      const strongMatch = res.body.matches.find((match) => String(match.candidate.id) === String(strongCandidate._id));
+      const partialMatch = res.body.matches.find((match) => String(match.candidate.id) === String(partialCandidate._id));
+      assert.equal(strongMatch.invitationStatus, 'Team Member');
+      assert.equal(strongMatch.teamId.toString(), team._id.toString());
+      assert.equal(partialMatch.invitationStatus, 'Pending');
+      assert.equal(partialMatch.invitationId.toString(), invitation._id.toString());
     }
 
     {
@@ -340,6 +394,20 @@ test(
       assert.ok(res.body.match.explanation);
       assert.ok(!Object.hasOwn(res.body.match, 'email'));
       assert.ok(!Object.hasOwn(res.body.match, 'firebaseUid'));
+    }
+
+    {
+      const res = createMockRes();
+      await getCandidateMatch(
+        {
+          user: { uid: strongCandidate.firebaseUid },
+          params: { ideaId: unapprovedIdea._id.toString() },
+          query: {},
+        },
+        res,
+      );
+      assert.equal(res.statusCode, 409);
+      assert.equal(res.body.code, 'ANALYSIS_NOT_APPROVED');
     }
 
     {

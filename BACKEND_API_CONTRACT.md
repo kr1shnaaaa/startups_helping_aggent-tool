@@ -909,11 +909,184 @@ _/
 
 ### GET /api/candidates/search/with-scores
 
-Purpose: Allows a founder to search for candidates who match the skills and requirements defined in their startup idea, returned with compatibility scores.
+Purpose: Allows a founder to search for candidates who match the skills and requirements defined in their approved startup idea, returned with compatibility scores.
+
+Authentication: Firebase Bearer token required.
+
+Authorization: Only the idea owner can access. Idea must have `aiAnalysis.isApproved: true`.
+
+Query Parameters:
+- `ideaId` (required) — MongoDB ObjectId of the approved idea
+- `skills` (optional) — Comma-separated skill names for additional filtering (pre-filter before scoring)
+- `level` (optional) — Minimum skill level filter (Beginner, Intermediate, Advanced)
+- `domain` (optional) — Domain interest filter
+- `workMode` (optional) — Work preference filter (remote, in-person, hybrid)
+- `availability` (optional) — Availability filter (full-time, part-time, flexible)
+- `sort` (optional, default: 'best') — Sort order
+- `page` (optional, default: 1) — Page number (clamped 1..1000000)
+- `limit` (optional, default: 20, max: 50) — Results per page
+- `minScore` (optional, default: 40, range: 0..100) — Minimum match score threshold
+
+Validation Rules:
+- `ideaId` must be a valid MongoDB ObjectId
+- Founder must own the idea (403 if not)
+- Idea must have approved AI analysis (409 if not)
+
+Success Response (200):
+```json
+{
+  "success": true,
+  "matches": [
+    {
+      "matchId": "ObjectId",
+      "candidate": {
+        "id": "ObjectId",
+        "name": "string",
+        "profileImage": "string",
+        "college": { "name": "string" },
+        "location": { "city": "string", "state": "string", "region": "string" },
+        "skills": [{ "name": "string", "level": "Beginner|Intermediate|Advanced" }],
+        "interests": ["string"],
+        "targetRoles": ["string"],
+        "domainInterests": ["string"],
+        "availability": "full-time|part-time|flexible",
+        "workPreference": "remote|in-person|hybrid",
+        "hoursPerWeek": 20,
+        "createdAt": "ISO date"
+      },
+      "score": 92.5,
+      "explanation": {
+        "score": 92.5,
+        "matchedSkills": ["React", "Node.js", "MongoDB"],
+        "missingSkills": ["TypeScript"],
+        "niceToHaveSkills": ["Figma"],
+        "sharedDomains": ["EdTech"],
+        "roleMatches": ["Full Stack Developer"],
+        "components": {
+          "skills": 32.0,
+          "level": 15.0,
+          "role": 15.0,
+          "domain": 15.0,
+          "availability": 7.5
+        },
+        "recommendationReason": "3 of 4 required skills matched. preferred role matches. domain interests align. availability is compatible.",
+        "scoringVersion": "v1",
+        "availabilityFallback": false
+      },
+      "invitationStatus": "Pending|Accepted|Declined|Withdrawn|Team Member|null",
+      "invitationId": "ObjectId|null",
+      "teamId": "ObjectId|null",
+      "createdAt": "ISO date"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 24, "totalPages": 2 },
+  "sort": "best",
+  "minScore": 40
+}
+```
+
+Error Responses:
+- `400` — Invalid ideaId format
+- `401` — Missing or invalid Firebase token
+- `403` — User is not the idea owner
+- `409` — Idea analysis not approved
+- `500` — Server failure
+
+Database Reads:
+- `User` (founder lookup)
+- `Idea` (idea lookup, ownership check, approval check, requirements extraction)
+- `User` (candidate query with profileType=candidate, profileCompleted=true, excludes founder)
+- `Match` (upsert match snapshots)
+- `Invitation` (batched lookup for invitation status)
+- `Team` (batched lookup for team membership)
+
+Database Writes:
+- `Match` (upsert match snapshot with score, explanation, requirementsSnapshot)
+
+Scoring Behavior:
+- Only candidates with `profileType: "candidate"` and `profileCompleted: true` are considered
+- Founder is explicitly excluded via `_id: { $ne: founder._id }`
+- Scores computed from approved `aiAnalysis.rolesAndSkills` (falling back to top-level `requiredSkills`/`requiredRoles`)
+- Skill normalization uses taxonomy aliases (e.g., ReactJS → React, NodeJS → Node.js)
+- Deterministic scoring: identical inputs always produce identical scores
+- Ranking: score descending, then createdAt descending, then candidate id (stable)
 
 ### GET /api/candidates/matches/:ideaId
 
-Purpose: Returns the compatibility match score and explanation for the currently authenticated candidate against a specific startup idea.
+Purpose: Returns the compatibility match score and explanation for the currently authenticated candidate against a specific approved startup idea.
+
+Authentication: Firebase Bearer token required.
+
+Authorization: Any authenticated candidate can check their match. Idea must have `aiAnalysis.isApproved: true`.
+
+Path Parameters:
+- `ideaId` — MongoDB ObjectId of the approved idea
+
+Validation Rules:
+- `ideaId` must be a valid MongoDB ObjectId
+- Idea must have approved AI analysis (409 if not)
+
+Success Response (200):
+```json
+{
+  "success": true,
+  "match": {
+    "ideaId": "ObjectId",
+    "userId": "ObjectId",
+    "matchedSkills": ["React", "Node.js"],
+    "matchScore": 92.5,
+    "explanation": {
+      "score": 92.5,
+      "matchedSkills": ["React", "Node.js"],
+      "missingSkills": ["TypeScript"],
+      "niceToHaveSkills": ["Figma"],
+      "sharedDomains": ["EdTech"],
+      "roleMatches": ["Full Stack Developer"],
+      "components": { "skills": 32.0, "level": 15.0, "role": 15.0, "domain": 15.0, "availability": 7.5 },
+      "recommendationReason": "3 of 4 required skills matched. preferred role matches. domain interests align. availability is compatible.",
+      "scoringVersion": "v1",
+      "availabilityFallback": false
+    },
+    "scoringVersion": "v1",
+    "calculatedAt": "ISO date",
+    "refreshedAt": "ISO date",
+    "requirementsSnapshot": { ... }
+  }
+}
+```
+
+Error Responses:
+- `400` — Invalid ideaId format
+- `401` — Missing or invalid Firebase token
+- `404` — Idea not found
+- `409` — Idea analysis not approved
+- `500` — Server failure
+
+Side Effects: Creates/updates `Match` document if none exists.
+
+Database Reads:
+- `User` (candidate lookup)
+- `Idea` (idea lookup, approval check, requirements extraction)
+- `Match` (existing match lookup)
+
+Database Writes:
+- `Match` (upsert match snapshot)
+
+### Matching Score Formula
+
+The scoring model uses deterministic weighted components (v1):
+
+| Component | Weight | Description |
+|-----------|--------|-------------|
+| Skills | 40% | Percentage of required must-have skills the candidate possesses |
+| Level | 15% | Skill level compatibility (Advanced=1.0, Intermediate=0.5, Beginner=0 for required Intermediate+) |
+| Role | 15% | Candidate targetRoles match against required must-have roles (flexible matching) |
+| Domain | 15% | Candidate domainInterests overlap with idea domain/domainInterests |
+| Availability | 15% | Availability, workPreference, and hoursPerWeek compatibility |
+
+Final score = Σ(component_score × weight) rounded to 2 decimal places.
+
+All skill matching uses the canonical taxonomy from `config/taxonomies.js` (e.g., ReactJS/React.js → React, NodeJS/Node.js → Node.js).
 
 ## 8) Invitation APIs
 

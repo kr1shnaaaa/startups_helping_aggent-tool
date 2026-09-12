@@ -7,6 +7,22 @@
 - [ ] Start the API with `npm start`.
 - [ ] Confirm `GET http://localhost:5000/api/health` returns `{ "status": "ok" }`.
 - [ ] Optional: run `node scripts/seedData.js` to create representative records.
+- [ ] Optional: run `npm run seed:candidates` to create Phase 4A demo candidate records.
+
+## Phase 4A demo candidate seed data
+
+Phase 4A demo candidate data is seeded into the existing `users` collection as real `User` documents with `profileType: "candidate"` and `profileCompleted: true`.
+
+- Seed command: `npm run seed:candidates`
+- Seed file: `backend/scripts/seedCandidates.js`
+- Candidate count: 20
+- Demo identifier: deterministic `firebaseUid` values from `demo-cand-01` through `demo-cand-20`
+- Duplicate behavior: reruns update the same demo users with `findOneAndUpdate(..., { upsert: true })`
+- Taxonomy source: `backend/config/taxonomies.js` and the actual `User` schema enums
+- Firebase Auth: no Firebase accounts, passwords, credentials, or signup calls are created; demo Firebase UIDs are MongoDB identifiers only
+- Matching eligibility: candidates satisfy existing search requirements: `profileType: "candidate"`, `profileCompleted: true`, populated `skills`, `targetRoles`, `domainInterests`, `availability`, and `workPreference`
+
+The seed data intentionally includes strong, medium, partial, role-mismatch, domain-mismatch, availability-mismatch, and work-mode-mismatch profiles for Phase 4 matching tests.
 
 ## Authentication and profiles
 

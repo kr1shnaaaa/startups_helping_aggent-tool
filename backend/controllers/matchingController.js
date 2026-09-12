@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 const Idea = require('../models/Idea');
 const User = require('../models/User');
 const Match = require('../models/Match');
+const Invitation = require('../models/Invitation');
+const Team = require('../models/Team');
 const { scoreCandidate, flattenRequirements } = require('../services/matchScoring');
 
 const publicCandidateFields =
@@ -27,8 +29,12 @@ const toPublicCandidate = (candidate) => ({
   hoursPerWeek: candidate.hoursPerWeek,
 });
 
-const buildCandidateQuery = ({ skills, level, domain, workMode, availability }) => {
-  const query = { profileType: 'candidate', profileCompleted: true };
+const buildCandidateQuery = ({ skills, level, domain, workMode, availability, excludedUserId }) => {
+  const query = {
+    profileType: 'candidate',
+    profileCompleted: true,
+    ...(excludedUserId ? { _id: { $ne: excludedUserId } } : {}),
+  };
   const andConditions = [];
 
   if (skills.length) {
@@ -70,7 +76,7 @@ const searchMatches = async (req, res) => {
 
     const requestedSkills = parseList(req.query.skills);
     const page = parsePage(req.query.page, 1, 1000000);
-    const limit = parsePage(req.query.limit, 10, 50);
+    const limit = parsePage(req.query.limit, 20, 50);
     const minScore = Math.min(Math.max(Number(req.query.minScore ?? 40) || 0, 0), 100);
     const query = buildCandidateQuery({
       skills: requestedSkills,
@@ -78,6 +84,7 @@ const searchMatches = async (req, res) => {
       domain,
       workMode,
       availability,
+      excludedUserId: founder._id,
     });
 
     const candidates = await User.find(query).select(publicCandidateFields).lean();
@@ -90,6 +97,27 @@ const searchMatches = async (req, res) => {
       workPreference: idea.workPreference,
       hoursPerWeek: idea.hoursPerWeek,
     };
+
+    const candidateIds = candidates.map((candidate) => candidate._id);
+    const [invitations, teams] = await Promise.all([
+      Invitation.find({ ideaId: idea._id, toCandidate: { $in: candidateIds } }).select('_id toCandidate status').lean(),
+      Team.find({ ideaId: idea._id, 'members.userId': { $in: candidateIds } }).select('_id members.userId').lean(),
+    ]);
+
+    const invitationByCandidate = new Map();
+    for (const invitation of invitations) {
+      invitationByCandidate.set(String(invitation.toCandidate), {
+        invitationId: invitation._id,
+        status: invitation.status,
+      });
+    }
+
+    const teamByCandidate = new Map();
+    for (const team of teams) {
+      for (const member of team.members || []) {
+        teamByCandidate.set(String(member.userId), { teamId: team._id });
+      }
+    }
 
     const matches = [];
     for (const candidate of candidates) {
@@ -110,12 +138,16 @@ const searchMatches = async (req, res) => {
         },
         { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
       ).lean();
+      const invitationState = invitationByCandidate.get(String(candidate._id));
+      const teamState = teamByCandidate.get(String(candidate._id));
       matches.push({
         matchId: snapshot._id,
         candidate: toPublicCandidate(candidate),
         score: explanation.score,
         explanation,
-        invitationStatus: null,
+        invitationStatus: teamState ? 'Team Member' : invitationState?.status || null,
+        invitationId: invitationState?.invitationId || null,
+        teamId: teamState?.teamId || null,
         createdAt: candidate.createdAt,
       });
     }
@@ -153,6 +185,9 @@ const getCandidateMatch = async (req, res) => {
     if (!match) {
       const idea = await Idea.findById(ideaId).lean();
       if (!idea) return res.status(404).json({ success: false, message: 'Idea not found' });
+      if (!idea.aiAnalysis || !idea.aiAnalysis.isApproved) {
+        return res.status(409).json({ success: false, message: 'Idea analysis must be approved before matching', code: 'ANALYSIS_NOT_APPROVED' });
+      }
 
       const requirements = {
         ...(idea.aiAnalysis || {}),

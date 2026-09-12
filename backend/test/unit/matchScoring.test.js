@@ -46,6 +46,44 @@ test('normalizes duplicate and case-variant skills and rounds final score', () =
   assert.equal(result.score, 72.5);
 });
 
+test('matches skill taxonomy aliases such as ReactJS to React', () => {
+  const result = scoreCandidate({
+    skills: [{ name: 'ReactJS', level: 'Advanced' }, { name: 'NodeJS', level: 'Intermediate' }],
+    targetRoles: ['Full Stack Developer'],
+    domainInterests: ['SaaS'],
+    availability: 'part-time',
+    workPreference: 'hybrid',
+    hoursPerWeek: 20,
+  }, {
+    domain: 'SaaS',
+    availability: 'part-time',
+    workPreference: 'hybrid',
+    hoursPerWeek: 10,
+    rolesAndSkills: [{ role: 'Full Stack Developer', skills: ['React', 'Node.js'], experienceLevel: 'Intermediate' }],
+  });
+  assert.deepEqual(result.matchedSkills, ['React', 'Node.js']);
+  assert.deepEqual(result.missingSkills, []);
+  assert.equal(result.score, 100);
+});
+
+test('provides a human-readable recommendation reason', () => {
+  const result = scoreCandidate({
+    skills: [{ name: 'React', level: 'Advanced' }, { name: 'Node.js', level: 'Intermediate' }],
+    targetRoles: ['Full Stack Developer'],
+    domainInterests: ['SaaS'],
+    availability: 'part-time',
+    workPreference: 'hybrid',
+    hoursPerWeek: 20,
+  }, {
+    domain: 'SaaS',
+    availability: 'part-time',
+    workPreference: 'hybrid',
+    hoursPerWeek: 10,
+    rolesAndSkills: [{ role: 'Full Stack Developer', skills: ['React', 'Node.js', 'MongoDB'], experienceLevel: 'Intermediate' }],
+  });
+  assert.equal(result.recommendationReason, '2 of 3 required skills matched. preferred role matches. domain interests align. availability is compatible.');
+});
+
 test('keeps nice-to-have skills explanation-only and handles no must-have skills', () => {
   const result = scoreCandidate({ skills: [{ name: 'Docker', level: 'Advanced' }] }, {
     rolesAndSkills: [{ role: 'DevOps Engineer', skills: ['Docker'], priority: 'nice-to-have', experienceLevel: 'Advanced' }],

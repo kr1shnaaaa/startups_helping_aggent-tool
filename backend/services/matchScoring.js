@@ -1,8 +1,14 @@
+const { normalizeSkill } = require('../config/taxonomies');
+
 const SCORING_VERSION = 'v1';
 const WEIGHTS = Object.freeze({ skills: 0.4, level: 0.15, role: 0.15, domain: 0.15, availability: 0.15 });
 const LEVELS = Object.freeze({ beginner: 1, intermediate: 2, advanced: 3 });
 
 const normalize = (value) => String(value || '').trim().toLowerCase();
+const normalizeSkillKey = (value) => {
+  const canonical = normalizeSkill(value);
+  return canonical ? canonical.toLowerCase() : '';
+};
 const unique = (values) => [...new Map(values.filter(Boolean).map((value) => [normalize(value), String(value).trim()])).values()];
 
 const levelValue = (level) => LEVELS[normalize(level)] || 0;
@@ -12,7 +18,7 @@ const normalizeCandidateSkills = (candidate) => {
   const byName = new Map();
   for (const skill of skills) {
     const name = typeof skill === 'string' ? skill : skill?.name;
-    const key = normalize(name);
+    const key = normalizeSkillKey(name);
     if (!key) continue;
     const current = byName.get(key);
     if (!current || levelValue(skill?.level) > levelValue(current.level)) {
@@ -108,7 +114,7 @@ const calculateLevelCompatibility = (candidateSkills, requirements) => {
     const required = levelValue(role.experienceLevel);
     if (!required) return 1;
     if (!role.skills || !role.skills.length) return 1;
-    const relevant = role.skills.map((skill) => candidateSkills.get(normalize(skill))).filter(Boolean);
+    const relevant = role.skills.map((skill) => candidateSkills.get(normalizeSkillKey(skill))).filter(Boolean);
     if (!relevant.length) return 0;
     const best = Math.max(...relevant.map((skill) => levelValue(skill.level)));
     if (best >= required) return 1;
@@ -129,14 +135,47 @@ const calculateAvailabilityCompatibility = (candidate, requirements) => {
   return 0;
 };
 
+const buildRecommendationReason = (result) => {
+  const parts = [];
+  const totalSkills = result.matchedSkills.length + result.missingSkills.length;
+
+  if (totalSkills > 0) {
+    parts.push(`${result.matchedSkills.length} of ${totalSkills} required skills matched`);
+  }
+
+  if (result.roleMatches.length) {
+    parts.push('preferred role matches');
+  } else if (result.components.role < 15) {
+    parts.push('preferred role does not match');
+  }
+
+  if (result.sharedDomains.length) {
+    parts.push('domain interests align');
+  } else if (result.components.domain < 15) {
+    parts.push('domain interests do not align');
+  }
+
+  if (result.availabilityFallback) {
+    parts.push('availability requirements not specified');
+  } else if (result.components.availability >= 15) {
+    parts.push('availability is compatible');
+  } else if (result.components.availability > 0) {
+    parts.push('availability is partially compatible');
+  } else {
+    parts.push('availability is not compatible');
+  }
+
+  return parts.join('. ') + '.';
+};
+
 function scoreCandidate(candidate = {}, requirements = {}) {
   const flattened = flattenRequirements(requirements);
   const candidateSkills = normalizeCandidateSkills(candidate);
   const candidateSkillKeys = new Set(candidateSkills.keys());
-  const mustHaveKeys = flattened.mustHave.map(normalize);
-  const matchedSkills = flattened.mustHave.filter((skill) => candidateSkillKeys.has(normalize(skill)));
-  const missingSkills = flattened.mustHave.filter((skill) => !candidateSkillKeys.has(normalize(skill)));
-  const niceToHaveSkills = flattened.niceToHave.filter((skill) => candidateSkillKeys.has(normalize(skill)));
+  const mustHaveKeys = flattened.mustHave.map(normalizeSkillKey);
+  const matchedSkills = flattened.mustHave.filter((skill) => candidateSkillKeys.has(normalizeSkillKey(skill)));
+  const missingSkills = flattened.mustHave.filter((skill) => !candidateSkillKeys.has(normalizeSkillKey(skill)));
+  const niceToHaveSkills = flattened.niceToHave.filter((skill) => candidateSkillKeys.has(normalizeSkillKey(skill)));
   const skillsMatchScore = mustHaveKeys.length ? (matchedSkills.length / mustHaveKeys.length) * 100 : 100;
   const levelCompatibility = calculateLevelCompatibility(candidateSkills, flattened);
   const requiredRoles = flattened.roles
@@ -176,9 +215,17 @@ function scoreCandidate(candidate = {}, requirements = {}) {
     matchedSkills,
     missingSkills,
     niceToHaveSkills,
-    sharedDomains: uniqueSharedDomains,
+    sharedDomains,
     roleMatches,
     components,
+    recommendationReason: buildRecommendationReason({
+      matchedSkills,
+      missingSkills,
+      roleMatches,
+      sharedDomains,
+      components,
+      availabilityFallback: !requirements.availability && !requirements.workPreference && !requirements.hoursPerWeek,
+    }),
     scoringVersion: SCORING_VERSION,
     availabilityFallback: !requirements.availability && !requirements.workPreference && !requirements.hoursPerWeek,
   };
