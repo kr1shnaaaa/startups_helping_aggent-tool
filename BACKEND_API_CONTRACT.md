@@ -419,15 +419,124 @@ Purpose: Enables a founder to create a new startup idea document. The backend au
 
 ### GET /api/ideas/
 
-Purpose: Fetches a list of startup ideas created by the currently authenticated founder.
+Purpose: Fetches the authenticated user's ideas for the central resume view.
+
+Authentication: Firebase Bearer token required. The query is scoped to `createdBy` for the authenticated MongoDB user.
+
+Query parameters:
+
+- `status` (optional) — exact persisted idea status
+- `limit` (optional, default `20`, clamped to `1..50`)
+- `skip` (optional, default `0`, non-negative)
+
+Success response includes the persisted workflow fields needed to resume an idea without regenerating AI content:
+
+```json
+{
+  "success": true,
+  "ideas": [
+    {
+      "_id": "ObjectId",
+      "title": "Raw idea title",
+      "description": "Raw idea description",
+      "original": {
+        "title": "Raw idea title",
+        "description": "Raw idea description",
+        "capturedAt": "ISO date"
+      },
+      "enhanced": {
+        "title": "Refined title",
+        "description": "Refined description",
+        "problem": "Problem statement",
+        "solution": "Solution explanation",
+        "targetAudience": "Target audience",
+        "valueProposition": "Value proposition",
+        "coreWorkflow": "Core workflow",
+        "updatedAt": "ISO date"
+      },
+      "aiAnalysis": {
+        "isApproved": false,
+        "scoring": {
+          "version": "v1",
+          "overallScore": 72,
+          "verdict": "PROMISING"
+        }
+      },
+      "status": "draft",
+      "createdAt": "ISO date",
+      "updatedAt": "ISO date"
+    }
+  ],
+  "total": 1
+}
+```
+
+The list response is safe to use for status badges, score summaries, resume CTAs, and opening `/api/ideas/:ideaId`.
 
 ### GET /api/ideas/:ideaId
 
-Purpose: Retrieves the full details of a specific startup idea by its unique identifier.
+Purpose: Retrieves the complete persisted idea record used by the phase pages and central idea detail/resume page.
+
+Authentication: Firebase Bearer token required.
+
+Path parameter:
+
+- `ideaId` — valid MongoDB ObjectId
+
+Response includes the same idea record, including `original`, `enhanced`, `aiAnalysis`, `status`, and timestamps. This endpoint does not call the AI provider or create a new idea.
+
+Authorization note: The current controller requires authentication but does not apply an owner check on this read endpoint. Frontend founder workflow pages should only open the authenticated founder's own idea IDs.
 
 ### PUT /api/ideas/:ideaId
 
-Purpose: Allows the owner of an idea to update its details like title, description, skills, etc.
+Purpose: Performs an owner-authorized partial update of one idea record. It is used to save raw edits and enhanced review edits without replacing later workflow phases.
+
+Authentication: Firebase Bearer token required.
+
+Authorization: Only the idea owner may update the record.
+
+Supported body fields:
+
+```json
+{
+  "title": "Updated raw title",
+  "description": "Updated raw description with at least 20 characters",
+  "category": "Marketplace",
+  "domain": "EdTech",
+  "problemStatement": "Optional raw problem statement",
+  "targetUsers": "Optional raw target users",
+  "requiredSkills": ["React", "Node.js"],
+  "enhanced": {
+    "title": "Updated refined title",
+    "description": "Updated refined description",
+    "problem": "Updated problem",
+    "solution": "Updated solution",
+    "targetAudience": "Updated audience",
+    "valueProposition": "Updated value proposition",
+    "coreWorkflow": "Updated workflow"
+  }
+}
+```
+
+Rules:
+
+- The update is partial; omitted `original`, `enhanced`, and `aiAnalysis` data is preserved.
+- `title` must be at least 3 characters when supplied.
+- `description` must be at least 20 characters when supplied.
+- `enhanced` must be an object; only supported enhanced fields are merged.
+- Saving `enhanced` merges with the existing enhanced object and sets `enhanced.updatedAt`.
+- If the current status is `draft` or `enhancing`, saving `enhanced` advances status to `enhanced`.
+- Existing analysis and approval metadata are not deleted by raw or enhanced edits.
+
+Success response: `200 OK` with `{ "success": true, "message": "Idea updated successfully", "idea": { ... } }`.
+
+Error statuses:
+
+- `400` invalid ID, invalid enhanced object, or invalid title/description length
+- `401` missing/invalid Firebase token
+- `403` authenticated user does not own the idea
+- `404` user or idea not found
+- `500` update failure
 
 ### DELETE /api/ideas/:ideaId
 
@@ -435,10 +544,12 @@ Purpose: Allows the owner to delete an idea provided it has not yet received an 
 
 Validation rules:
 
-- `title` required, minimum 3 characters
-- `description` required, minimum 20 characters
-- `requiredSkills` may be array or omitted
-- Backend sets `status: "draft"`
+- `title` is required and must be at least 3 characters
+- `description` is required and must be at least 20 characters
+- `requiredSkills` may be an array or omitted
+- The backend creates one record with `status: "draft"`.
+- `original.title`, `original.description`, and `original.capturedAt` are saved at creation.
+- `enhanced` and `aiAnalysis` remain unset until later workflow actions.
 
 Success response:
 
@@ -498,25 +609,6 @@ Success response:
 }
 ```
 
-### PUT /api/ideas/:ideaId
-
-Allowed updates:
-
-- `title`
-- `description`
-- `category`
-- `domain`
-- `problemStatement`
-- `targetUsers`
-- `requiredSkills`
-
-Validation rules:
-
-- Only the idea owner can update
-- `403` if user is not owner
-- Title must be at least 3 chars if changed
-- Description must be at least 20 chars if changed
-
 ### DELETE /api/ideas/:ideaId
 
 Validation rules:
@@ -524,6 +616,19 @@ Validation rules:
 - Only the idea owner can delete
 - `400` if idea has an approved analysis
 - `403` if not owner
+
+## 5.1) Three-phase idea persistence contract
+
+All phases use the same `ideaId`; moving between phases never creates a second `Idea` document.
+
+| Phase          | Persisted fields                                                     | Status values                              | Resume behavior                                                                                     |
+| -------------- | -------------------------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Raw Idea       | `title`, `description`, `original`                                   | `draft`                                    | Load the saved raw fields through `GET /api/ideas/:ideaId`                                          |
+| Enhanced Idea  | `enhanced` plus `enhanced.updatedAt`                                 | `enhancing` while AI runs, then `enhanced` | Load existing `enhanced`; do not regenerate unless the client explicitly calls the enhance endpoint |
+| Final Analysis | `aiAnalysis`, including deterministic `scoring` and `rolesAndSkills` | `analyzing` while AI runs, then `analyzed` | Load existing `aiAnalysis`; `GET /api/ideas/:ideaId/analysis` never regenerates or recomputes       |
+| Approved Idea  | `aiAnalysis.isApproved`, `aiAnalysis.approvedAt`                     | `matching`                                 | Preserve `original`, `enhanced`, and `aiAnalysis`; matching becomes available                       |
+
+Backward navigation is safe because raw updates only update raw fields, enhanced updates merge only enhanced fields, and analysis approval updates only analysis/approval fields. Existing later-phase data must not be replaced with `undefined` or `null`.
 
 ## 6.1) Enhanced Idea and Deterministic Analysis APIs
 
@@ -916,6 +1021,7 @@ Authentication: Firebase Bearer token required.
 Authorization: Only the idea owner can access. Idea must have `aiAnalysis.isApproved: true`.
 
 Query Parameters:
+
 - `ideaId` (required) — MongoDB ObjectId of the approved idea
 - `skills` (optional) — Comma-separated skill names for additional filtering (pre-filter before scoring)
 - `level` (optional) — Minimum skill level filter (Beginner, Intermediate, Advanced)
@@ -928,11 +1034,13 @@ Query Parameters:
 - `minScore` (optional, default: 40, range: 0..100) — Minimum match score threshold
 
 Validation Rules:
+
 - `ideaId` must be a valid MongoDB ObjectId
 - Founder must own the idea (403 if not)
 - Idea must have approved AI analysis (409 if not)
 
 Success Response (200):
+
 ```json
 {
   "success": true,
@@ -945,7 +1053,9 @@ Success Response (200):
         "profileImage": "string",
         "college": { "name": "string" },
         "location": { "city": "string", "state": "string", "region": "string" },
-        "skills": [{ "name": "string", "level": "Beginner|Intermediate|Advanced" }],
+        "skills": [
+          { "name": "string", "level": "Beginner|Intermediate|Advanced" }
+        ],
         "interests": ["string"],
         "targetRoles": ["string"],
         "domainInterests": ["string"],
@@ -986,6 +1096,7 @@ Success Response (200):
 ```
 
 Error Responses:
+
 - `400` — Invalid ideaId format
 - `401` — Missing or invalid Firebase token
 - `403` — User is not the idea owner
@@ -993,6 +1104,7 @@ Error Responses:
 - `500` — Server failure
 
 Database Reads:
+
 - `User` (founder lookup)
 - `Idea` (idea lookup, ownership check, approval check, requirements extraction)
 - `User` (candidate query with profileType=candidate, profileCompleted=true, excludes founder)
@@ -1001,9 +1113,11 @@ Database Reads:
 - `Team` (batched lookup for team membership)
 
 Database Writes:
+
 - `Match` (upsert match snapshot with score, explanation, requirementsSnapshot)
 
 Scoring Behavior:
+
 - Only candidates with `profileType: "candidate"` and `profileCompleted: true` are considered
 - Founder is explicitly excluded via `_id: { $ne: founder._id }`
 - Scores computed from approved `aiAnalysis.rolesAndSkills` (falling back to top-level `requiredSkills`/`requiredRoles`)
@@ -1020,13 +1134,16 @@ Authentication: Firebase Bearer token required.
 Authorization: Any authenticated candidate can check their match. Idea must have `aiAnalysis.isApproved: true`.
 
 Path Parameters:
+
 - `ideaId` — MongoDB ObjectId of the approved idea
 
 Validation Rules:
+
 - `ideaId` must be a valid MongoDB ObjectId
 - Idea must have approved AI analysis (409 if not)
 
 Success Response (200):
+
 ```json
 {
   "success": true,
@@ -1056,6 +1173,7 @@ Success Response (200):
 ```
 
 Error Responses:
+
 - `400` — Invalid ideaId format
 - `401` — Missing or invalid Firebase token
 - `404` — Idea not found
@@ -1065,24 +1183,26 @@ Error Responses:
 Side Effects: Creates/updates `Match` document if none exists.
 
 Database Reads:
+
 - `User` (candidate lookup)
 - `Idea` (idea lookup, approval check, requirements extraction)
 - `Match` (existing match lookup)
 
 Database Writes:
+
 - `Match` (upsert match snapshot)
 
 ### Matching Score Formula
 
 The scoring model uses deterministic weighted components (v1):
 
-| Component | Weight | Description |
-|-----------|--------|-------------|
-| Skills | 40% | Percentage of required must-have skills the candidate possesses |
-| Level | 15% | Skill level compatibility (Advanced=1.0, Intermediate=0.5, Beginner=0 for required Intermediate+) |
-| Role | 15% | Candidate targetRoles match against required must-have roles (flexible matching) |
-| Domain | 15% | Candidate domainInterests overlap with idea domain/domainInterests |
-| Availability | 15% | Availability, workPreference, and hoursPerWeek compatibility |
+| Component    | Weight | Description                                                                                       |
+| ------------ | ------ | ------------------------------------------------------------------------------------------------- |
+| Skills       | 40%    | Percentage of required must-have skills the candidate possesses                                   |
+| Level        | 15%    | Skill level compatibility (Advanced=1.0, Intermediate=0.5, Beginner=0 for required Intermediate+) |
+| Role         | 15%    | Candidate targetRoles match against required must-have roles (flexible matching)                  |
+| Domain       | 15%    | Candidate domainInterests overlap with idea domain/domainInterests                                |
+| Availability | 15%    | Availability, workPreference, and hoursPerWeek compatibility                                      |
 
 Final score = Σ(component_score × weight) rounded to 2 decimal places.
 
