@@ -1,21 +1,26 @@
 import Button from "../common/Button";
 import Badge from "../common/Badge";
 import Card from "../common/Card";
+import { normalizeInvitationStatus } from "../../utils/matchGrouping";
 
 const invitationButtonState = (invitationStatus) => {
-  switch (invitationStatus) {
+  switch (normalizeInvitationStatus(invitationStatus)) {
     case "Pending":
-      return { label: "Request Sent", disabled: true, variant: "secondary" };
+      return {
+        label: "Invitation Pending",
+        disabled: true,
+        variant: "secondary",
+      };
     case "Accepted":
       return { label: "Accepted", disabled: true, variant: "secondary" };
     case "Team Member":
-      return { label: "Team Member", disabled: true, variant: "secondary" };
+      return { label: "Already in Team", disabled: true, variant: "secondary" };
     case "Withdrawn":
-      return { label: "Request Closed", disabled: true, variant: "secondary" };
+      return { label: "Invite Again", disabled: false, variant: "primary" };
     case "Declined":
-      return { label: "Send Again", disabled: false, variant: "primary" };
+      return { label: "Invite Again", disabled: false, variant: "primary" };
     default:
-      return { label: "Send Request", disabled: false, variant: "primary" };
+      return { label: "Invite", disabled: false, variant: "primary" };
   }
 };
 
@@ -26,23 +31,47 @@ const CandidateCard = ({
   sending = false,
   sendError = "",
 }) => {
-  const { name, college, location, targetRoles, availability, workPreference } =
-    candidate;
+  const {
+    name,
+    college,
+    location,
+    targetRoles = [],
+    availability,
+    workPreference,
+  } = candidate || {};
 
   const {
-    score,
+    score = 0,
     matchedSkills = [],
     missingSkills = [],
     niceToHaveSkills = [],
     roleMatches = [],
     sharedDomains = [],
     recommendationReason = "",
-  } = match;
+    invitationStatus = null,
+  } = match || {};
 
-  const buttonState = invitationButtonState(match.invitationStatus);
-  const primaryRole = targetRoles?.[0] || "Candidate";
-  const matchedCount = matchedSkills.length;
-  const totalRequired = matchedCount + missingSkills.length;
+  const normalizedRoleMatches = Array.isArray(roleMatches)
+    ? roleMatches.filter(Boolean)
+    : [];
+  const normalizedMatchedSkills = Array.isArray(matchedSkills)
+    ? matchedSkills.filter(Boolean)
+    : [];
+  const normalizedMissingSkills = Array.isArray(missingSkills)
+    ? missingSkills.filter(Boolean)
+    : [];
+  const normalizedNiceToHaveSkills = Array.isArray(niceToHaveSkills)
+    ? niceToHaveSkills.filter(Boolean)
+    : [];
+  const normalizedSharedDomains = Array.isArray(sharedDomains)
+    ? sharedDomains.filter(Boolean)
+    : [];
+
+  const buttonState = invitationButtonState(invitationStatus);
+  const primaryRole = normalizedRoleMatches[0] || targetRoles[0] || "Candidate";
+  const scoreValue = Number.isFinite(Number(score))
+    ? Math.round(Number(score))
+    : 0;
 
   return (
     <Card style={{ marginBottom: "var(--space-md)" }}>
@@ -99,16 +128,16 @@ const CandidateCard = ({
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div
             style={{
-              fontSize: "2rem",
+              fontSize: "1.8rem",
               fontWeight: 700,
               color: "var(--accent)",
               lineHeight: 1,
             }}
           >
-            {score}
+            {scoreValue}%
           </div>
           <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-            match score
+            Match
           </div>
         </div>
       </div>
@@ -121,41 +150,40 @@ const CandidateCard = ({
           marginTop: "var(--space-sm)",
         }}
       >
-        {roleMatches.map((role) => (
-          <Badge key={role} variant="accent">
+        {normalizedRoleMatches.map((role) => (
+          <Badge key={String(role)} variant="accent">
             {role}
           </Badge>
         ))}
-        {sharedDomains.map((domain) => (
-          <Badge key={domain}>{domain}</Badge>
+        {normalizedSharedDomains.map((domain) => (
+          <Badge key={String(domain)}>{domain}</Badge>
         ))}
         {availability && <Badge>{availability}</Badge>}
         {workPreference && <Badge>{workPreference}</Badge>}
       </div>
 
       <div style={{ marginTop: "var(--space-md)" }}>
-        {matchedSkills.length > 0 && (
+        {normalizedMatchedSkills.length > 0 && (
           <div style={{ marginBottom: "var(--space-sm)" }}>
-            <span
+            <div
               style={{
                 fontSize: "0.8rem",
                 color: "var(--muted)",
                 fontWeight: 600,
+                marginBottom: "4px",
               }}
             >
-              Matched Skills ({matchedCount}
-              {totalRequired ? `/${totalRequired}` : ""})
-            </span>
+              Matched Skills
+            </div>
             <div
               style={{
                 display: "flex",
                 flexWrap: "wrap",
                 gap: "var(--space-xs)",
-                marginTop: "4px",
               }}
             >
-              {matchedSkills.map((skill) => (
-                <Badge key={skill} variant="accent">
+              {normalizedMatchedSkills.map((skill) => (
+                <Badge key={String(skill)} variant="accent">
                   ✓ {skill}
                 </Badge>
               ))}
@@ -163,53 +191,53 @@ const CandidateCard = ({
           </div>
         )}
 
-        {missingSkills.length > 0 && (
+        {normalizedMissingSkills.length > 0 && (
           <div style={{ marginBottom: "var(--space-sm)" }}>
-            <span
+            <div
               style={{
                 fontSize: "0.8rem",
                 color: "var(--muted)",
                 fontWeight: 600,
+                marginBottom: "4px",
               }}
             >
               Missing Skills
-            </span>
+            </div>
             <div
               style={{
                 display: "flex",
                 flexWrap: "wrap",
                 gap: "var(--space-xs)",
-                marginTop: "4px",
               }}
             >
-              {missingSkills.map((skill) => (
-                <Badge key={skill}>{skill}</Badge>
+              {normalizedMissingSkills.map((skill) => (
+                <Badge key={String(skill)}>{skill}</Badge>
               ))}
             </div>
           </div>
         )}
 
-        {niceToHaveSkills.length > 0 && (
+        {normalizedNiceToHaveSkills.length > 0 && (
           <div style={{ marginBottom: "var(--space-sm)" }}>
-            <span
+            <div
               style={{
                 fontSize: "0.8rem",
                 color: "var(--muted)",
                 fontWeight: 600,
+                marginBottom: "4px",
               }}
             >
               Nice-to-Have
-            </span>
+            </div>
             <div
               style={{
                 display: "flex",
                 flexWrap: "wrap",
                 gap: "var(--space-xs)",
-                marginTop: "4px",
               }}
             >
-              {niceToHaveSkills.map((skill) => (
-                <Badge key={skill}>{skill}</Badge>
+              {normalizedNiceToHaveSkills.map((skill) => (
+                <Badge key={String(skill)}>{skill}</Badge>
               ))}
             </div>
           </div>
@@ -227,7 +255,7 @@ const CandidateCard = ({
             color: "var(--accent-dark)",
           }}
         >
-          <strong>Why recommended?</strong> {recommendationReason}
+          <strong>Why this candidate?</strong> {recommendationReason}
         </div>
       )}
 
@@ -249,7 +277,7 @@ const CandidateCard = ({
             variant={buttonState.variant}
             disabled={buttonState.disabled || sending}
             onClick={() => {
-              if (!buttonState.disabled) {
+              if (!buttonState.disabled && onSendRequest) {
                 onSendRequest(candidate, match);
               }
             }}

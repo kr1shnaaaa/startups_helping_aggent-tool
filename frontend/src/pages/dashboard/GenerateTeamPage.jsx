@@ -8,6 +8,10 @@ import LoadingState from "../../components/common/LoadingState";
 import ErrorState from "../../components/common/ErrorState";
 import CandidateCard from "../../components/matching/CandidateCard";
 import {
+  groupMatchesByRequiredRoles,
+  MAX_CANDIDATES_PER_ROLE,
+} from "../../utils/matchGrouping";
+import {
   searchMatches,
   sendInvitation,
   getIdeaById,
@@ -20,6 +24,19 @@ const DEFAULT_FILTERS = {
   workMode: "",
   availability: "",
   minScore: "",
+};
+
+const getUserFriendlyError = (err, fallback = "Something went wrong") => {
+  const status = err?.status || err?.response?.status;
+
+  if (status === 401) return "Your session has expired. Please log in again.";
+  if (status === 403) return "You do not have permission to view this idea.";
+  if (status === 404) return "The idea could not be found.";
+  if (status === 409) {
+    return "This idea’s analysis is not approved yet. Please return to the analysis step and approve it before generating team recommendations.";
+  }
+
+  return err?.message || fallback;
 };
 
 const GenerateTeamPage = () => {
@@ -37,9 +54,12 @@ const GenerateTeamPage = () => {
     limit: 20,
     totalPages: 0,
   });
+  const [generateTeamLoading, setGenerateTeamLoading] = useState(false);
+  const [generateTeamError, setGenerateTeamError] = useState("");
+  const [generateTeamResults, setGenerateTeamResults] = useState(null);
   const [sendingId, setSendingId] = useState(null);
   const [sendError, setSendError] = useState("");
-  const [activeTab, setActiveTab] = useState("candidates");
+  const [activeTab, setActiveTab] = useState("generate");
   const isMountedRef = useRef(true);
   const hasSearchedRef = useRef(false);
 
@@ -47,6 +67,7 @@ const GenerateTeamPage = () => {
     async (page = 1) => {
       setSearching(true);
       setSendError("");
+
       try {
         const params = { page, limit: 20 };
         if (filters.skills?.trim()) params.skills = filters.skills.trim();
@@ -56,8 +77,10 @@ const GenerateTeamPage = () => {
         if (filters.availability?.trim())
           params.availability = filters.availability.trim();
         if (filters.minScore) params.minScore = parseInt(filters.minScore, 10);
+
         const data = await searchMatches(ideaId, params);
         if (!isMountedRef.current) return;
+
         setCandidates(data.matches || []);
         setPagination({
           page: data.pagination?.page || page,
@@ -65,10 +88,13 @@ const GenerateTeamPage = () => {
           limit: data.pagination?.limit || 20,
           totalPages:
             data.pagination?.totalPages ||
-            Math.ceil((data.pagination?.total || 0) / 20),
+            Math.ceil(
+              (data.pagination?.total || 0) / (data.pagination?.limit || 20),
+            ),
         });
       } catch (err) {
-        if (isMountedRef.current) setError(err.message || "Search failed");
+        if (isMountedRef.current)
+          setError(getUserFriendlyError(err, "Search failed"));
       } finally {
         if (isMountedRef.current) setSearching(false);
       }
@@ -76,33 +102,80 @@ const GenerateTeamPage = () => {
     [ideaId, filters],
   );
 
+  const executeGenerateTeam = useCallback(
+    async (rolesAndSkills = []) => {
+      setGenerateTeamLoading(true);
+      setGenerateTeamError("");
+
+      try {
+        const data = await searchMatches(ideaId, {
+          page: 1,
+          limit: 50,
+          minScore: 0,
+        });
+
+        if (!isMountedRef.current) return;
+
+        const grouped = groupMatchesByRequiredRoles(
+          rolesAndSkills,
+          data.matches || [],
+        );
+        setGenerateTeamResults(grouped);
+      } catch (err) {
+        if (isMountedRef.current) {
+          setGenerateTeamError(
+            getUserFriendlyError(err, "Failed to load recommendations"),
+          );
+        }
+      } finally {
+        if (isMountedRef.current) setGenerateTeamLoading(false);
+      }
+    },
+    [ideaId],
+  );
+
   useEffect(() => {
     isMountedRef.current = true;
+
     const loadIdea = async () => {
       if (!isMountedRef.current) return;
       setLoading(true);
+      setError("");
+
       try {
         const data = await getIdeaById(ideaId);
         if (!isMountedRef.current) return;
+
         const ideaData = data.idea || data;
+        const approved = ideaData?.aiAnalysis?.isApproved === true;
+
         setIdea(ideaData);
-        setAnalysisApproved(ideaData?.aiAnalysis?.isApproved === true);
-        if (ideaData?.aiAnalysis?.isApproved && !hasSearchedRef.current) {
+        setAnalysisApproved(approved);
+
+        if (approved && !hasSearchedRef.current) {
           hasSearchedRef.current = true;
+          setActiveTab("generate");
+          executeGenerateTeam(ideaData.aiAnalysis?.rolesAndSkills || []);
           executeSearch(1);
         }
+
+        if (!approved) {
+          setActiveTab("generate");
+        }
       } catch (err) {
-        if (isMountedRef.current)
-          setError(err.message || "Failed to load idea");
+        if (isMountedRef.current) {
+          setError(getUserFriendlyError(err, "Failed to load idea"));
+        }
       } finally {
         if (isMountedRef.current) setLoading(false);
       }
     };
+
     loadIdea();
     return () => {
       isMountedRef.current = false;
     };
-  }, [ideaId, executeSearch]);
+  }, [ideaId, executeGenerateTeam, executeSearch]);
 
   const handleFilterChange = (field, value) => {
     setFilters((prev) => ({ ...prev, [field]: value }));
@@ -120,15 +193,22 @@ const GenerateTeamPage = () => {
   };
 
   const handleSendRequest = async (candidate, match) => {
-    const candidateId = candidate._id || candidate.id;
+    const candidateId = candidate?._id || candidate?.id;
+    if (!candidateId) return;
+
     setSendingId(candidateId);
     setSendError("");
+
     try {
-      const role = match?.roleMatches?.[0] || "Team Member";
+      const role = match?.roleMatches?.[0] || match?.role || "Team Member";
       await sendInvitation(ideaId, candidateId, role, "");
-      executeSearch(pagination.page);
+      if (activeTab === "generate") {
+        executeGenerateTeam(rolesAndSkills);
+      } else {
+        executeSearch(pagination.page);
+      }
     } catch (err) {
-      setSendError(err.message || "Failed to send request");
+      setSendError(getUserFriendlyError(err, "Failed to send request"));
     } finally {
       setSendingId(null);
     }
@@ -168,7 +248,7 @@ const GenerateTeamPage = () => {
             <h2>Analysis Approval Required</h2>
             <p style={{ color: "var(--muted)" }}>
               You need to approve your critical analysis before you can generate
-              a team. This ensures we match you with candidates who fit your
+              a team. This ensures the recommendations are based on your
               validated requirements.
             </p>
             <div style={{ marginTop: "var(--space-md)" }}>
@@ -188,8 +268,20 @@ const GenerateTeamPage = () => {
                 display: "flex",
                 gap: "var(--space-md)",
                 marginBottom: "var(--space-lg)",
+                flexWrap: "wrap",
               }}
             >
+              <Button
+                variant={activeTab === "generate" ? "primary" : "secondary"}
+                onClick={() => {
+                  setActiveTab("generate");
+                  if (!generateTeamResults) {
+                    executeGenerateTeam(rolesAndSkills);
+                  }
+                }}
+              >
+                Generate Team
+              </Button>
               <Button
                 variant={activeTab === "candidates" ? "primary" : "secondary"}
                 onClick={() => setActiveTab("candidates")}
@@ -203,6 +295,139 @@ const GenerateTeamPage = () => {
                 Requirements
               </Button>
             </div>
+
+            {activeTab === "generate" && (
+              <>
+                {generateTeamLoading && (
+                  <LoadingState label="Finding candidates... Matching students with your required roles and skills..." />
+                )}
+
+                {generateTeamError && (
+                  <Card
+                    style={{
+                      marginBottom: "var(--space-md)",
+                      borderColor: "var(--danger)",
+                    }}
+                  >
+                    <p style={{ color: "var(--danger)" }}>
+                      {generateTeamError}
+                    </p>
+                    <Button
+                      variant="secondary"
+                      onClick={() => executeGenerateTeam(rolesAndSkills)}
+                    >
+                      Try Again
+                    </Button>
+                  </Card>
+                )}
+
+                {!generateTeamLoading &&
+                  !generateTeamError &&
+                  generateTeamResults && (
+                    <>
+                      {generateTeamResults.length === 0 && (
+                        <Card>
+                          <h3>No matching candidates found yet.</h3>
+                          <p style={{ color: "var(--muted)" }}>
+                            No role-wise recommendations could be generated. Try
+                            the Candidates tab to search manually.
+                          </p>
+                        </Card>
+                      )}
+
+                      {generateTeamResults.length > 0 && (
+                        <div
+                          style={{ display: "grid", gap: "var(--space-lg)" }}
+                        >
+                          {generateTeamResults.map((roleGroup, idx) => (
+                            <Card
+                              key={idx}
+                              style={{ padding: "var(--space-lg)" }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "flex-start",
+                                  gap: "var(--space-md)",
+                                  marginBottom: "var(--space-md)",
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <div>
+                                  <h2 style={{ margin: 0 }}>
+                                    {roleGroup.role}
+                                  </h2>
+                                  {(roleGroup.skills || []).length > 0 && (
+                                    <p
+                                      style={{
+                                        color: "var(--muted)",
+                                        fontSize: "0.9rem",
+                                        margin: "4px 0 0 0",
+                                      }}
+                                    >
+                                      Required skills:{" "}
+                                      {(roleGroup.skills || []).join(", ")}
+                                    </p>
+                                  )}
+                                </div>
+                                <Badge variant="accent">
+                                  {roleGroup.candidates.length} candidate
+                                  {roleGroup.candidates.length !== 1 ? "s" : ""}
+                                  {" found"}
+                                </Badge>
+                              </div>
+
+                              {roleGroup.candidates.length === 0 ? (
+                                <p style={{ color: "var(--muted)", margin: 0 }}>
+                                  No matching candidates found for this role
+                                  yet.
+                                </p>
+                              ) : (
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gap: "var(--space-md)",
+                                  }}
+                                >
+                                  {roleGroup.candidates
+                                    .slice(0, MAX_CANDIDATES_PER_ROLE)
+                                    .map((item, cidx) => (
+                                      <CandidateCard
+                                        key={
+                                          item.candidate?._id ||
+                                          item.candidate?.id ||
+                                          cidx
+                                        }
+                                        candidate={item.candidate || {}}
+                                        match={{
+                                          ...(item.explanation || {}),
+                                          score: item.score,
+                                          invitationStatus:
+                                            item.invitationStatus,
+                                          invitationId: item.invitationId,
+                                          teamId: item.teamId,
+                                          role: roleGroup.role,
+                                        }}
+                                        onSendRequest={handleSendRequest}
+                                        sending={
+                                          sendingId ===
+                                          (item.candidate?._id ||
+                                            item.candidate?.id)
+                                        }
+                                        sendError={sendError}
+                                      />
+                                    ))}
+                                </div>
+                              )}
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+              </>
+            )}
 
             {activeTab === "requirements" && (
               <Card style={{ marginBottom: "var(--space-lg)" }}>
@@ -223,6 +448,8 @@ const GenerateTeamPage = () => {
                             justifyContent: "space-between",
                             marginBottom: "var(--space-sm)",
                             alignItems: "center",
+                            gap: "var(--space-sm)",
+                            flexWrap: "wrap",
                           }}
                         >
                           <h4 style={{ margin: 0 }}>{roleSkill.role}</h4>
@@ -254,6 +481,7 @@ const GenerateTeamPage = () => {
                             gap: "var(--space-md)",
                             fontSize: "0.85rem",
                             color: "var(--muted)",
+                            flexWrap: "wrap",
                           }}
                         >
                           <span>Experience: {roleSkill.experienceLevel}</span>
