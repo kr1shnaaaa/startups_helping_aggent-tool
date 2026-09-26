@@ -1,41 +1,124 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import Button from "../../components/common/Button";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
-import { analyzeIdea, approveAnalysis } from "../../services/ideaApi";
+import IdeaWorkflowProgress from "../../components/common/IdeaWorkflowProgress";
+import {
+  analyzeIdea,
+  approveAnalysis,
+  getIdeaById,
+} from "../../services/ideaApi";
 
 const AnalyzeIdeaPage = () => {
   const { ideaId } = useParams();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [analysis, setAnalysis] = useState(null);
+  const [ideaStatus, setIdeaStatus] = useState("analyzed");
+  const [isApproved, setIsApproved] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
-    const loadAnalysis = async () => {
-      if (!isMounted) return;
+    const loadAnalysisData = async () => {
+      if (!ideaId) return;
       setLoading(true);
+      setError("");
       try {
-        const data = await analyzeIdea(ideaId);
-        if (isMounted) setAnalysis(data.analysis);
+        const ideaData = await getIdeaById(ideaId);
+        if (!isMounted) return;
+        const currentIdea = ideaData.idea || ideaData;
+
+        setIdeaStatus(currentIdea.status || "analyzed");
+        const approved =
+          currentIdea.aiAnalysis?.isApproved === true ||
+          currentIdea.status === "matching";
+        setIsApproved(approved);
+
+        // If analysis already exists, load it directly without calling AI
+        if (currentIdea.aiAnalysis && currentIdea.aiAnalysis.scoring) {
+          setAnalysis(currentIdea.aiAnalysis);
+        } else {
+          // No analysis exists yet, generate initial analysis
+          setAnalyzing(true);
+          const data = await analyzeIdea(ideaId);
+          if (isMounted) {
+            setAnalysis(data.analysis);
+            setIdeaStatus("analyzed");
+          }
+        }
       } catch (err) {
-        if (isMounted)
-          setError(err.message || "Analysis failed. Please try again.");
+        if (isMounted) {
+          setError(
+            err.message || "Failed to load idea analysis. Please try again.",
+          );
+        }
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+          setAnalyzing(false);
+        }
       }
     };
 
-    loadAnalysis();
+    loadAnalysisData();
 
     return () => {
       isMounted = false;
     };
   }, [ideaId]);
 
-  if (loading) {
+  const handleApprove = async () => {
+    setApproving(true);
+    setError("");
+    setSuccessMsg("");
+    try {
+      const res = await approveAnalysis(ideaId, true);
+      setIsApproved(true);
+      setIdeaStatus("matching");
+      if (res.analysis) {
+        setAnalysis(res.analysis);
+      }
+      setSuccessMsg(
+        "Idea approved successfully! You can now start matching with candidates.",
+      );
+    } catch (err) {
+      setError(err.message || "Failed to approve idea. Please try again.");
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handleReAnalyze = async () => {
+    if (
+      !window.confirm(
+        "Do you want AI to run a fresh critical analysis based on your latest enhanced idea?",
+      )
+    ) {
+      return;
+    }
+    setAnalyzing(true);
+    setError("");
+    setSuccessMsg("");
+    try {
+      const data = await analyzeIdea(ideaId);
+      setAnalysis(data.analysis);
+      setIdeaStatus("analyzed");
+      setIsApproved(false);
+      setSuccessMsg("AI analysis refreshed successfully!");
+    } catch (err) {
+      setError(err.message || "Re-analysis failed.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  if (loading && !analysis) {
     return (
       <AppLayout>
         <div
@@ -45,7 +128,11 @@ const AnalyzeIdeaPage = () => {
             textAlign: "center",
           }}
         >
-          <p>Analyzing your idea...</p>
+          <p>
+            {analyzing
+              ? "📊 Running critical AI analysis and scoring on your idea..."
+              : "Loading saved analysis..."}
+          </p>
         </div>
       </AppLayout>
     );
@@ -63,9 +150,24 @@ const AnalyzeIdeaPage = () => {
         >
           <Card style={{ borderColor: "var(--danger)" }}>
             <p style={{ color: "var(--danger)" }}>Analysis failed: {error}</p>
-            <Button variant="secondary" onClick={() => window.history.back()}>
-              Go Back
-            </Button>
+            <div
+              style={{
+                display: "flex",
+                gap: "var(--space-md)",
+                justifyContent: "center",
+                marginTop: "var(--space-md)",
+              }}
+            >
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/app/ideas/${ideaId}/enhance`)}
+              >
+                ← Back to Enhanced Idea
+              </Button>
+              <Button onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+            </div>
           </Card>
         </div>
       </AppLayout>
@@ -100,13 +202,114 @@ const AnalyzeIdeaPage = () => {
   return (
     <AppLayout>
       <div style={{ padding: "var(--space-lg)", maxWidth: "1000px" }}>
+        <IdeaWorkflowProgress
+          currentPhase={3}
+          ideaId={ideaId}
+          status={ideaStatus}
+          isApproved={isApproved}
+        />
+
         <header style={{ marginBottom: "var(--space-lg)" }}>
-          <h1>Critical Analysis</h1>
-          <p style={{ color: "var(--muted)" }}>
-            This is a critical evaluation, not a marketing score. Scores are
-            calculated deterministically from structured AI evidence.
-          </p>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              gap: "var(--space-md)",
+            }}
+          >
+            <div>
+              <h1>Final Idea & Critical Analysis</h1>
+              <p style={{ color: "var(--muted)" }}>
+                Phase 3: Objective evaluation and deterministic scoring from AI
+                evidence. Approve this analysis to unlock candidate matching.
+              </p>
+            </div>
+            {isApproved && (
+              <Badge
+                variant="accent"
+                style={{ padding: "8px 14px", fontSize: "0.95rem" }}
+              >
+                ✓ Idea Approved
+              </Badge>
+            )}
+          </div>
         </header>
+
+        {isApproved && (
+          <Card
+            style={{
+              borderColor: "var(--accent)",
+              background: "var(--accent-soft)",
+              marginBottom: "var(--space-lg)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "var(--space-md)",
+              }}
+            >
+              <div>
+                <h3
+                  style={{ margin: "0 0 4px 0", color: "var(--accent-dark)" }}
+                >
+                  ✓ This Startup Idea is Approved!
+                </h3>
+                <p
+                  style={{
+                    margin: 0,
+                    color: "var(--accent-dark)",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  All requirements, roles, and skills are locked for matching.
+                  You can now discover and invite candidates.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                onClick={() => navigate(`/app/ideas/${ideaId}/matching`)}
+              >
+                👥 Generate Team & Match Candidates →
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {successMsg && (
+          <Card
+            style={{
+              borderColor: "var(--accent)",
+              marginBottom: "var(--space-md)",
+            }}
+          >
+            <p
+              style={{
+                color: "var(--accent-dark)",
+                margin: 0,
+                fontWeight: 600,
+              }}
+            >
+              ✓ {successMsg}
+            </p>
+          </Card>
+        )}
+
+        {error && (
+          <Card
+            style={{
+              borderColor: "var(--danger)",
+              marginBottom: "var(--space-md)",
+            }}
+          >
+            <p style={{ color: "var(--danger)", margin: 0 }}>{error}</p>
+          </Card>
+        )}
 
         <div
           style={{
@@ -124,9 +327,10 @@ const AnalyzeIdeaPage = () => {
                   alignItems: "center",
                   gap: "var(--space-lg)",
                   marginBottom: "var(--space-lg)",
+                  flexWrap: "wrap",
                 }}
               >
-                <div style={{ textAlign: "center" }}>
+                <div style={{ textAlign: "center", minWidth: "120px" }}>
                   <div
                     style={{
                       fontSize: "3rem",
@@ -138,20 +342,20 @@ const AnalyzeIdeaPage = () => {
                   </div>
                   <div
                     style={{
-                      fontSize: "1.5rem",
-                      fontWeight: 600,
-                      color: "var(--accent)",
+                      fontSize: "1.2rem",
+                      fontWeight: 700,
+                      color: "var(--accent-dark)",
                     }}
                   >
                     {scoring?.verdict}
                   </div>
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: "200px" }}>
                   <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>
                     <strong>How this works:</strong> Scores are calculated
-                    deterministically from structured AI evidence using the
-                    application's scoring model. These are decision-support
-                    signals, not guaranteed business outcomes.
+                    deterministically on the backend from structured AI
+                    evidence. These are decision-support signals designed to
+                    help you build an effective team.
                   </p>
                 </div>
               </div>
@@ -160,16 +364,22 @@ const AnalyzeIdeaPage = () => {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
                   gap: "var(--space-md)",
                 }}
               >
                 {scoring?.breakdown &&
                   Object.entries(scoring.breakdown).map(([key, value]) => (
-                    <Card key={key} style={{ textAlign: "center" }}>
+                    <Card
+                      key={key}
+                      style={{
+                        textAlign: "center",
+                        padding: "var(--space-md)",
+                      }}
+                    >
                       <div
                         style={{
-                          fontSize: "2rem",
+                          fontSize: "1.8rem",
                           fontWeight: 700,
                           color: "var(--ink)",
                         }}
@@ -177,7 +387,7 @@ const AnalyzeIdeaPage = () => {
                         {value}
                       </div>
                       <div
-                        style={{ color: "var(--muted)", fontSize: "0.9rem" }}
+                        style={{ color: "var(--muted)", fontSize: "0.85rem" }}
                       >
                         {key.replace(/([A-Z])/g, " $1").trim()}
                       </div>
@@ -187,7 +397,7 @@ const AnalyzeIdeaPage = () => {
             </Card>
 
             <Card className="mar-t">
-              <h3>Required Team Skills</h3>
+              <h3>Required Team Skills & Roles</h3>
               <div style={{ display: "grid", gap: "var(--space-md)" }}>
                 {rolesAndSkills?.map((role, idx) => (
                   <Card key={idx} style={{ padding: "var(--space-md)" }}>
@@ -196,11 +406,14 @@ const AnalyzeIdeaPage = () => {
                         display: "flex",
                         justifyContent: "space-between",
                         marginBottom: "var(--space-sm)",
+                        alignItems: "center",
                       }}
                     >
                       <h4 style={{ margin: 0 }}>{role.role}</h4>
                       <Badge
-                        variant={role.priority === "must-have" ? "accent" : ""}
+                        variant={
+                          role.priority === "must-have" ? "accent" : "neutral"
+                        }
                       >
                         {role.priority}
                       </Badge>
@@ -236,13 +449,18 @@ const AnalyzeIdeaPage = () => {
             </Card>
 
             <Card className="mar-t">
-              <h3>Important Limitations</h3>
+              <h3>Important Limitations & Assumptions</h3>
               <ul style={{ margin: 0, paddingLeft: "var(--space-lg)" }}>
-                <li>AI analysis is based on the information provided.</li>
+                <li>
+                  AI analysis is based on the information provided in the
+                  enhanced concept.
+                </li>
                 <li>
                   Differentiation assessment is not proof of market uniqueness.
                 </li>
-                <li>Market assumptions should be independently validated.</li>
+                <li>
+                  Market and user assumptions should be independently validated.
+                </li>
                 <li>
                   Scores are decision-support signals, not guaranteed business
                   outcomes.
@@ -251,7 +469,7 @@ const AnalyzeIdeaPage = () => {
             </Card>
 
             <Card className="mar-t">
-              <h3>Risks & Limitations</h3>
+              <h3>Risks & Mitigation Areas</h3>
               <div
                 style={{
                   display: "grid",
@@ -260,7 +478,7 @@ const AnalyzeIdeaPage = () => {
                 }}
               >
                 <div>
-                  <h4>Risks</h4>
+                  <h4>Identified Risks</h4>
                   <ul style={{ margin: 0, paddingLeft: "var(--space-lg)" }}>
                     {evidence?.limits?.risks?.map((r, i) => (
                       <li key={i}>{r}</li>
@@ -268,9 +486,9 @@ const AnalyzeIdeaPage = () => {
                   </ul>
                 </div>
                 <div>
-                  <h4>Limitations</h4>
+                  <h4>Key Assumptions</h4>
                   <ul style={{ margin: 0, paddingLeft: "var(--space-lg)" }}>
-                    {evidence?.limits?.limitations?.map((l, i) => (
+                    {evidence?.limits?.assumptions?.map((l, i) => (
                       <li key={i}>{l}</li>
                     ))}
                   </ul>
@@ -299,7 +517,7 @@ const AnalyzeIdeaPage = () => {
             </Card>
 
             <Card className="mar-t">
-              <h3>Tech Stack</h3>
+              <h3>Recommended Tech Stack</h3>
               <div
                 style={{
                   display: "flex",
@@ -312,6 +530,33 @@ const AnalyzeIdeaPage = () => {
                 ))}
               </div>
             </Card>
+
+            <Card className="mar-t">
+              <h3>Actions</h3>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-sm)",
+                }}
+              >
+                <Button
+                  variant="secondary"
+                  onClick={() => navigate(`/app/ideas/${ideaId}`)}
+                  style={{ width: "100%" }}
+                >
+                  View Full Idea Details
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={analyzing}
+                  onClick={handleReAnalyze}
+                  style={{ width: "100%" }}
+                >
+                  {analyzing ? "Analyzing..." : "🔄 Re-run Analysis"}
+                </Button>
+              </div>
+            </Card>
           </aside>
         </div>
 
@@ -320,28 +565,43 @@ const AnalyzeIdeaPage = () => {
             display: "flex",
             gap: "var(--space-md)",
             marginTop: "var(--space-lg)",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
           }}
         >
           <Button
             variant="secondary"
             type="button"
-            onClick={() => window.history.back()}
+            onClick={() => navigate(`/app/ideas/${ideaId}/enhance`)}
           >
-            Edit Idea
+            ← Back to Enhanced Idea
           </Button>
-          <Button
-            onClick={async () => {
-              try {
-                await approveAnalysis(ideaId, true);
-                window.location.reload();
-              } catch (err) {
-                alert(err.message || "Failed to approve");
-              }
+
+          <div
+            style={{
+              display: "flex",
+              gap: "var(--space-md)",
+              flexWrap: "wrap",
             }}
           >
-            Approve Idea & Continue
-          </Button>
+            {!isApproved ? (
+              <Button
+                variant="primary"
+                disabled={approving || analyzing}
+                onClick={handleApprove}
+              >
+                {approving ? "Approving..." : "✓ Approve Idea & Continue"}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                onClick={() => navigate(`/app/ideas/${ideaId}/matching`)}
+              >
+                👥 Generate Team & Match Candidates →
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </AppLayout>

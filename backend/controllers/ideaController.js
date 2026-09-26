@@ -65,7 +65,7 @@ const listIdeas = async (req, res) => {
 
     const [ideas, total] = await Promise.all([
       Idea.find(query)
-        .select('title description category domain status aiAnalysis.isApproved createdAt updatedAt')
+        .select('title description category domain status original enhanced aiAnalysis.isApproved aiAnalysis.scoring createdAt updatedAt')
         .limit(safeLimit)
         .skip(safeSkip)
         .sort({ createdAt: -1 }),
@@ -114,7 +114,7 @@ const updateIdea = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized to update this idea' });
     }
 
-    const allowedFields = ['title', 'description', 'category', 'domain', 'problemStatement', 'targetUsers', 'requiredSkills', 'enhanced'];
+    const allowedFields = ['title', 'description', 'category', 'domain', 'problemStatement', 'targetUsers', 'requiredSkills', 'enhanced', 'status'];
     const updates = {};
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
@@ -138,17 +138,26 @@ const updateIdea = async (req, res) => {
             ...normalizedEnhanced,
             updatedAt: new Date(),
           };
+
+          if (!idea.status || idea.status === 'draft' || idea.status === 'enhancing') {
+            updates.status = 'enhanced';
+          }
+        } else if (field === 'status') {
+          const validStatuses = ['draft', 'enhancing', 'enhanced', 'analyzing', 'analyzed', 'matching', 'team-forming', 'complete'];
+          if (validStatuses.includes(req.body.status)) {
+            updates.status = req.body.status;
+          }
         } else {
-          updates[field] = req.body[field];
+          updates[field] = typeof req.body[field] === 'string' ? req.body[field].trim() : req.body[field];
         }
       }
     }
 
     // Validate title and description if being updated
-    if (updates.title && updates.title.trim().length < 3) {
+    if (updates.title && updates.title.length < 3) {
       return res.status(400).json({ success: false, message: 'Title must be at least 3 characters' });
     }
-    if (updates.description && updates.description.trim().length < 20) {
+    if (updates.description && updates.description.length < 20) {
       return res.status(400).json({ success: false, message: 'Description must be at least 20 characters' });
     }
 

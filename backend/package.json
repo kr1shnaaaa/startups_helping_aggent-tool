@@ -23,6 +23,7 @@
     "express": "^5.2.1",
     "firebase-admin": "^14.2.0",
     "mongoose": "^9.9.3",
+    "openai": "^7.15.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {

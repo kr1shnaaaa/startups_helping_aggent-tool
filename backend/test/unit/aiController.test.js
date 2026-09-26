@@ -191,3 +191,96 @@ test('approve analysis transitions an owned analyzed idea to matching', async ()
     restore();
   }
 });
+
+test('updating raw idea preserves enhanced and aiAnalysis data', async () => {
+  const idea = createIdea({
+    title: 'Original Raw Title',
+    description: 'Original raw description that is at least 20 characters long.',
+    status: 'enhanced',
+    enhanced: {
+      title: 'Preserved Enhanced Title',
+      description: 'Preserved enhanced description with lots of rich detail.',
+    },
+    aiAnalysis: {
+      scoring: { overallScore: 85, verdict: 'STRONG_POTENTIAL' },
+      isApproved: true,
+    },
+  });
+
+  const restore = mockDatabase(idea);
+  const originalFindByIdAndUpdate = Idea.findByIdAndUpdate;
+
+  Idea.findByIdAndUpdate = async (_id, updates) => {
+    Object.assign(idea, updates);
+    return idea;
+  };
+
+  try {
+    const res = response();
+    await updateIdea(
+      {
+        user: { uid: owner.firebaseUid },
+        params: { ideaId: idea._id },
+        body: {
+          title: 'Updated Raw Title',
+          description: 'Updated raw description that is also at least 20 characters long.',
+        },
+      },
+      res,
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(idea.title, 'Updated Raw Title');
+    assert.equal(idea.enhanced.title, 'Preserved Enhanced Title');
+    assert.equal(idea.aiAnalysis.scoring.overallScore, 85);
+  } finally {
+    Idea.findByIdAndUpdate = originalFindByIdAndUpdate;
+    restore();
+  }
+});
+
+test('saving enhanced idea advances status to enhanced and preserves raw and aiAnalysis', async () => {
+  const idea = createIdea({
+    title: 'Raw Title',
+    description: 'Raw description that is at least 20 characters long.',
+    status: 'draft',
+    aiAnalysis: {
+      scoring: { overallScore: 78, verdict: 'PROMISING' },
+    },
+  });
+
+  const restore = mockDatabase(idea);
+  const originalFindByIdAndUpdate = Idea.findByIdAndUpdate;
+
+  Idea.findByIdAndUpdate = async (_id, updates) => {
+    Object.assign(idea, updates);
+    return idea;
+  };
+
+  try {
+    const res = response();
+    await updateIdea(
+      {
+        user: { uid: owner.firebaseUid },
+        params: { ideaId: idea._id },
+        body: {
+          enhanced: {
+            title: 'New Enhanced Title',
+            description: 'New refined description with minimum length requirement.',
+            problem: 'Defined problem',
+          },
+        },
+      },
+      res,
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(idea.status, 'enhanced');
+    assert.equal(idea.title, 'Raw Title');
+    assert.equal(idea.enhanced.title, 'New Enhanced Title');
+    assert.equal(idea.aiAnalysis.scoring.overallScore, 78);
+  } finally {
+    Idea.findByIdAndUpdate = originalFindByIdAndUpdate;
+    restore();
+  }
+});

@@ -7,6 +7,8 @@ import IdeasPage from "../pages/dashboard/IdeasPage";
 import CreateIdeaPage from "../pages/dashboard/CreateIdeaPage";
 import EnhanceIdeaPage from "../pages/dashboard/EnhanceIdeaPage";
 import AnalyzeIdeaPage from "../pages/dashboard/AnalyzeIdeaPage";
+import IdeaDetailPage from "../pages/dashboard/IdeaDetailPage";
+import GenerateTeamPage from "../pages/dashboard/GenerateTeamPage";
 import FeaturePage from "../pages/FeaturePage";
 import RoleSelectionPage from "../pages/onboarding/RoleSelectionPage";
 import FounderOnboarding from "../pages/onboarding/FounderOnboarding";
@@ -66,8 +68,14 @@ const AppRoutes = () => (
       <Route path="/app" element={<ApplicationEntryPage />} />
       <Route path="/app/ideas" element={<IdeasPage />} />
       <Route path="/app/ideas/create" element={<CreateIdeaPage />} />
+      <Route path="/app/ideas/:ideaId/raw" element={<CreateIdeaPage />} />
       <Route path="/app/ideas/:ideaId/enhance" element={<EnhanceIdeaPage />} />
       <Route path="/app/ideas/:ideaId/analysis" element={<AnalyzeIdeaPage />} />
+      <Route
+        path="/app/ideas/:ideaId/matching"
+        element={<GenerateTeamPage />}
+      />
+      <Route path="/app/ideas/:ideaId" element={<IdeaDetailPage />} />
       <Route
         path="/app/talent"
         element={
