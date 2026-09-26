@@ -70,6 +70,7 @@ export const getMatchCardData = (item = {}) => {
   const explanation = item.explanation || {};
   const candidate = item.candidate || {};
   const roleMatches = toArray(explanation.roleMatches || item.roleMatches || candidate.roleMatches || []);
+  const matchedRoles = toArray(item.matchedRoles || explanation.matchedRoles || []);
   const matchedSkills = toArray(explanation.matchedSkills || item.matchedSkills || []);
   const missingSkills = toArray(explanation.missingSkills || item.missingSkills || []);
   const niceToHaveSkills = toArray(
@@ -84,6 +85,7 @@ export const getMatchCardData = (item = {}) => {
     missingSkills: missingSkills.map((skill) => normalizeRoleLabel(skill)),
     niceToHaveSkills: niceToHaveSkills.map((skill) => normalizeRoleLabel(skill)),
     roleMatches: roleMatches.map((role) => normalizeRoleLabel(role)),
+    matchedRoles: matchedRoles.map((role) => normalizeRoleLabel(role)),
     sharedDomains: sharedDomains.map((domain) => normalizeRoleLabel(domain)),
     recommendationReason: explanation.recommendationReason || item.recommendationReason || "",
     invitationStatus: normalizeInvitationStatus(item.invitationStatus || explanation.invitationStatus),
@@ -95,12 +97,13 @@ export const getMatchCardData = (item = {}) => {
 
 const candidateMatchesRole = (item, roleName) => {
   const card = getMatchCardData(item);
-  const targetRoles = toArray(card.candidate.targetRoles || []);
-
-  return (
-    (card.roleMatches || []).some((role) => rolesMatch(role, roleName)) ||
-    targetRoles.some((role) => rolesMatch(role, roleName))
-  );
+  
+  // Use explicit matchedRoles from backend (preferred) or fall back to roleMatches
+  const matchedRoles = toArray(card.matchedRoles || card.roleMatches || []);
+  
+  // Only match against explicitly matched roles - do NOT fall back to targetRoles
+  // This prevents candidates from appearing in roles they don't actually match
+  return matchedRoles.some((role) => rolesMatch(role, roleName));
 };
 
 export const groupMatchesByRequiredRoles = (rolesAndSkills = [], matches = []) => {

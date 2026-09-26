@@ -145,6 +145,8 @@ const searchMatches = async (req, res) => {
         candidate: toPublicCandidate(candidate),
         score: explanation.score,
         explanation,
+        // Explicit role attribution for correct frontend role-wise grouping
+        matchedRoles: explanation.roleMatches || [],
         invitationStatus: teamState ? 'Team Member' : invitationState?.status || null,
         invitationId: invitationState?.invitationId || null,
         teamId: teamState?.teamId || null,
@@ -217,7 +219,7 @@ const getCandidateMatch = async (req, res) => {
       ).lean();
     }
 
-    return res.status(200).json({ success: true, match });
+    return res.status(200).json({ success: true, match: { ...match, matchedRoles: match.explanation?.roleMatches || [] } });
   } catch (error) {
     console.error('[ERROR] GET /candidates/matches/:ideaId:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to get match' });

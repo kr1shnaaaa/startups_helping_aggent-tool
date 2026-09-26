@@ -1083,6 +1083,7 @@ Success Response (200):
         "scoringVersion": "v1",
         "availabilityFallback": false
       },
+      "matchedRoles": ["Full Stack Developer"],
       "invitationStatus": "Pending|Accepted|Declined|Withdrawn|Team Member|null",
       "invitationId": "ObjectId|null",
       "teamId": "ObjectId|null",
@@ -1164,6 +1165,7 @@ Success Response (200):
       "scoringVersion": "v1",
       "availabilityFallback": false
     },
+    "matchedRoles": ["Full Stack Developer"],
     "scoringVersion": "v1",
     "calculatedAt": "ISO date",
     "refreshedAt": "ISO date",

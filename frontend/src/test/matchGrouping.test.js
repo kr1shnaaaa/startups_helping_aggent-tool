@@ -13,12 +13,12 @@ describe('groupMatchesByRequiredRoles', () => {
     ];
 
     const matches = [
-      { candidate: { targetRoles: ['Frontend Developer'] }, score: 80, explanation: { roleMatches: ['Frontend Developer'], matchedSkills: ['React'], missingSkills: [] } },
-      { candidate: { targetRoles: ['Frontend Developer'] }, score: 92, explanation: { roleMatches: ['Frontend Developer'], matchedSkills: ['React'], missingSkills: [] } },
-      { candidate: { targetRoles: ['Frontend Developer'] }, score: 88, explanation: { roleMatches: ['Frontend Developer'], matchedSkills: ['React'], missingSkills: [] } },
-      { candidate: { targetRoles: ['Frontend Developer'] }, score: 71, explanation: { roleMatches: ['Frontend Developer'], matchedSkills: ['React'], missingSkills: [] } },
-      { candidate: { targetRoles: ['Backend Developer'] }, score: 90, explanation: { roleMatches: ['Backend Developer'], matchedSkills: ['Node.js'], missingSkills: [] } },
-      { candidate: { targetRoles: ['Backend Developer'] }, score: 84, explanation: { roleMatches: ['Backend Developer'], matchedSkills: ['Node.js'], missingSkills: [] } },
+      { candidate: { targetRoles: ['Frontend Developer'] }, score: 80, explanation: { roleMatches: ['Frontend Developer'], matchedSkills: ['React'], missingSkills: [] }, matchedRoles: ['Frontend Developer'] },
+      { candidate: { targetRoles: ['Frontend Developer'] }, score: 92, explanation: { roleMatches: ['Frontend Developer'], matchedSkills: ['React'], missingSkills: [] }, matchedRoles: ['Frontend Developer'] },
+      { candidate: { targetRoles: ['Frontend Developer'] }, score: 88, explanation: { roleMatches: ['Frontend Developer'], matchedSkills: ['React'], missingSkills: [] }, matchedRoles: ['Frontend Developer'] },
+      { candidate: { targetRoles: ['Frontend Developer'] }, score: 71, explanation: { roleMatches: ['Frontend Developer'], matchedSkills: ['React'], missingSkills: [] }, matchedRoles: ['Frontend Developer'] },
+      { candidate: { targetRoles: ['Backend Developer'] }, score: 90, explanation: { roleMatches: ['Backend Developer'], matchedSkills: ['Node.js'], missingSkills: [] }, matchedRoles: ['Backend Developer'] },
+      { candidate: { targetRoles: ['Backend Developer'] }, score: 84, explanation: { roleMatches: ['Backend Developer'], matchedSkills: ['Node.js'], missingSkills: [] }, matchedRoles: ['Backend Developer'] },
     ];
 
     const grouped = groupMatchesByRequiredRoles(rolesAndSkills, matches);
@@ -43,6 +43,7 @@ describe('groupMatchesByRequiredRoles', () => {
           missingSkills: ['TypeScript'],
           recommendationReason: 'Strong frontend fit',
         },
+        matchedRoles: ['Frontend Developer'],
         invitationStatus: 'pending',
       }],
     );
@@ -56,7 +57,7 @@ describe('groupMatchesByRequiredRoles', () => {
   test('returns an empty candidate list when no role matches exist', () => {
     const grouped = groupMatchesByRequiredRoles(
       [{ role: 'UI/UX Designer', skills: ['Figma'] }],
-      [{ candidate: { targetRoles: ['Frontend Developer'] }, score: 95, explanation: { roleMatches: ['Frontend Developer'] } }],
+      [{ candidate: { targetRoles: ['Frontend Developer'] }, score: 95, explanation: { roleMatches: ['Frontend Developer'] }, matchedRoles: ['Frontend Developer'] }],
     );
 
     expect(grouped).toHaveLength(1);
