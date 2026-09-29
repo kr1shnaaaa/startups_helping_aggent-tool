@@ -12,7 +12,11 @@ const invitationButtonState = (invitationStatus) => {
         variant: "secondary",
       };
     case "Accepted":
-      return { label: "Accepted", disabled: true, variant: "secondary" };
+      return {
+        label: "Invitation Accepted",
+        disabled: true,
+        variant: "secondary",
+      };
     case "Team Member":
       return { label: "Already in Team", disabled: true, variant: "secondary" };
     case "Withdrawn":
@@ -28,6 +32,7 @@ const CandidateCard = ({
   candidate,
   match,
   onSendRequest,
+  onViewProfile,
   sending = false,
   sendError = "",
 }) => {
@@ -270,7 +275,10 @@ const CandidateCard = ({
         }}
       >
         <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-          <Button variant="secondary" onClick={() => {}}>
+          <Button
+            variant="secondary"
+            onClick={() => onViewProfile?.(candidate, match)}
+          >
             View Profile
           </Button>
           <Button

@@ -1,5 +1,6 @@
 const Idea = require('../models/Idea');
 const User = require('../models/User');
+const Match = require('../models/Match');
 const vercelAI = require('../config/vercelAI');
 const { calculateIdeaScore } = require('../services/scoringService');
 const { normalizeSkills } = require('../config/taxonomies');
@@ -206,4 +207,78 @@ const updateAnalysis = async (req, res) => {
   }
 };
 
-module.exports = { enhanceIdea, analyzeIdea, getAnalysis, updateAnalysis };
+const generateInvitationMessage = async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const user = await User.findOne({ firebaseUid: req.user.uid });
+    if (!user) return res.status(401).json({ success: false, message: 'User profile not found', code: 'USER_NOT_FOUND' });
+
+    const { ideaId, candidateId, role, action = 'personalize', draft = '' } = req.body;
+    const allowedActions = ['personalize', 'enhance', 'summarize'];
+    if (!mongoose.Types.ObjectId.isValid(ideaId) || !mongoose.Types.ObjectId.isValid(candidateId) || !role?.trim()) {
+      return res.status(400).json({ success: false, message: 'ideaId, candidateId, and role are required', code: 'INVALID_INPUT' });
+    }
+    if (!allowedActions.includes(action)) {
+      return res.status(400).json({ success: false, message: 'Unsupported invitation generation action', code: 'INVALID_ACTION' });
+    }
+    if (action === 'enhance' && (typeof draft !== 'string' || !draft.trim())) {
+      return res.status(400).json({ success: false, message: 'A draft is required for enhancement', code: 'DRAFT_REQUIRED' });
+    }
+
+    const idea = await Idea.findById(ideaId).lean();
+    if (!idea) return res.status(404).json({ success: false, message: 'Idea not found', code: 'IDEA_NOT_FOUND' });
+    if (String(idea.createdBy) !== String(user._id)) return res.status(403).json({ success: false, message: 'Not authorized for this idea', code: 'NOT_OWNER' });
+    if (!idea.aiAnalysis?.isApproved) return res.status(409).json({ success: false, message: 'Idea analysis must be approved before generating invitation', code: 'ANALYSIS_NOT_APPROVED' });
+
+    const candidate = await User.findOne({ _id: candidateId, profileType: 'candidate', profileCompleted: true }).lean();
+    if (!candidate || String(candidate._id) === String(user._id)) return res.status(400).json({ success: false, message: 'Eligible candidate not found', code: 'INVALID_CANDIDATE' });
+
+    const match = await Match.findOne({ ideaId, userId: candidateId }).lean();
+    if (!match) return res.status(409).json({ success: false, message: 'Candidate must have a match snapshot first', code: 'MATCH_REQUIRED' });
+
+    // Check if candidate matches the requested role
+    const matchedRoles = match.explanation?.roleMatches || [];
+    if (!matchedRoles.includes(role)) {
+      return res.status(400).json({ success: false, message: 'Candidate does not match the requested role', code: 'ROLE_MISMATCH' });
+    }
+
+    const finalIdea = {
+      title: idea.enhanced?.title || idea.title,
+      description: idea.enhanced?.description || idea.description,
+      problem: idea.enhanced?.problem || idea.problemStatement,
+      solution: idea.enhanced?.solution,
+      targetAudience: idea.enhanced?.targetAudience || idea.targetUsers,
+    };
+    const message = await vercelAI.generateInvitationMessage({
+      ideaTitle: finalIdea.title,
+      ideaDescription: finalIdea.description,
+      ideaProblem: finalIdea.problem,
+      ideaSolution: finalIdea.solution,
+      ideaTargetAudience: finalIdea.targetAudience,
+      role: role.trim(),
+      requiredSkills: (idea.aiAnalysis?.rolesAndSkills?.find(r => r.role === role)?.skills) || [],
+      candidateName: candidate.name,
+      candidateSkills: (candidate.skills || []).map(skill => skill.name).filter(Boolean),
+      matchedSkills: match.explanation?.matchedSkills || [],
+      missingSkills: match.explanation?.missingSkills || [],
+      matchScore: match.matchScore,
+      candidateExperienceLevel: candidate.skills?.[0]?.level || undefined,
+      action,
+      draft,
+    });
+
+    return res.status(200).json({ success: true, message });
+  } catch (error) {
+    console.error('[AI INVITATION ERROR]', {
+      name: error?.name,
+      message: error?.message,
+      provider: process.env.AI_PROVIDER || 'unset',
+      model: process.env.AI_MODEL || 'default',
+      status: error?.statusCode || error?.status || error?.cause?.status,
+      cause: error?.cause?.message,
+    });
+    return res.status(502).json({ success: false, message: 'AI invitation generation failed. Please try again.', code: 'AI_GENERATION_FAILED' });
+  }
+};
+
+module.exports = { enhanceIdea, analyzeIdea, getAnalysis, updateAnalysis, generateInvitationMessage };

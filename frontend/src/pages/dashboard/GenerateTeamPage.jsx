@@ -7,6 +7,7 @@ import Badge from "../../components/common/Badge";
 import LoadingState from "../../components/common/LoadingState";
 import ErrorState from "../../components/common/ErrorState";
 import CandidateCard from "../../components/matching/CandidateCard";
+import CandidateProfileModal from "../../components/matching/CandidateProfileModal";
 import {
   groupMatchesByRequiredRoles,
   MAX_CANDIDATES_PER_ROLE,
@@ -60,6 +61,12 @@ const GenerateTeamPage = () => {
   const [sendingId, setSendingId] = useState(null);
   const [sendError, setSendError] = useState("");
   const [activeTab, setActiveTab] = useState("generate");
+  const [profileModal, setProfileModal] = useState({
+    isOpen: false,
+    candidateId: null,
+    matchContext: {},
+    roleContext: null,
+  });
   const isMountedRef = useRef(true);
   const hasSearchedRef = useRef(false);
 
@@ -214,8 +221,49 @@ const GenerateTeamPage = () => {
     }
   };
 
+  const handleViewProfile = (candidate, match) => {
+    const candidateId = candidate?._id || candidate?.id;
+    if (!candidateId) return;
+
+    setProfileModal({
+      isOpen: true,
+      candidateId,
+      matchContext: match || {},
+      roleContext: match?.role || null,
+      ideaId: ideaId,
+      ideaTitle: idea?.enhanced?.title || idea?.title || "Idea",
+      ideaDescription: idea?.enhanced?.description || idea?.description || "",
+      ideaProblem: idea?.enhanced?.problem || idea?.problemStatement || "",
+      ideaSolution: idea?.enhanced?.solution || "",
+      ideaTargetAudience: idea?.enhanced?.targetAudience || idea?.targetUsers || "",
+    });
+  };
+
+  const closeProfileModal = () => {
+    setProfileModal({
+      isOpen: false,
+      candidateId: null,
+      matchContext: {},
+      roleContext: null,
+    });
+  };
+
   const rolesAndSkills = idea?.aiAnalysis?.rolesAndSkills || [];
   const ideaTitle = idea?.title || "Idea";
+
+  const handleInvitationStateChange = useCallback(() => {
+    if (activeTab === "generate") {
+      executeGenerateTeam(idea?.aiAnalysis?.rolesAndSkills || []);
+    } else {
+      executeSearch(pagination.page);
+    }
+  }, [
+    activeTab,
+    executeGenerateTeam,
+    executeSearch,
+    idea,
+    pagination.page,
+  ]);
 
   if (loading) {
     return (
@@ -408,8 +456,11 @@ const GenerateTeamPage = () => {
                                           invitationId: item.invitationId,
                                           teamId: item.teamId,
                                           role: roleGroup.role,
+                                          requiredSkills: roleGroup.skills,
+                                          matchedRoles: item.matchedRoles,
                                         }}
                                         onSendRequest={handleSendRequest}
+                                        onViewProfile={handleViewProfile}
                                         sending={
                                           sendingId ===
                                           (item.candidate?._id ||
@@ -757,6 +808,7 @@ const GenerateTeamPage = () => {
                           candidate={item.candidate || item}
                           match={item.match || item}
                           onSendRequest={handleSendRequest}
+                          onViewProfile={handleViewProfile}
                           sending={
                             sendingId ===
                             (item.candidate?._id || item.candidate?.id)
@@ -809,6 +861,18 @@ const GenerateTeamPage = () => {
           </>
         )}
       </div>
+
+      <CandidateProfileModal
+        isOpen={profileModal.isOpen}
+        onClose={closeProfileModal}
+        candidateId={profileModal.candidateId}
+        matchContext={profileModal.matchContext}
+        roleContext={profileModal.roleContext}
+        ideaId={profileModal.ideaId}
+        ideaTitle={profileModal.ideaTitle}
+        ideaDescription={profileModal.ideaDescription}
+        onInvitationStateChange={handleInvitationStateChange}
+      />
     </AppLayout>
   );
 };

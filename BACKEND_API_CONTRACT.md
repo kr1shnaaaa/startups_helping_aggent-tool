@@ -69,6 +69,36 @@ Typical failure payload:
 - `409 Conflict` — duplicate or stale state, such as existing profile or pending invitation
 - `500 Internal Server Error` — unexpected server-side failure
 
+## 3.1) Shared app routes
+
+### GET /api/health
+
+Purpose: simple backend liveness check for local or deployment health monitoring.
+
+Success response:
+
+```json
+{
+  "status": "ok",
+  "message": "Backend is running"
+}
+```
+
+### GET /api/auth/me
+
+Purpose: returns the authenticated Firebase user identity for the active session.
+
+Authentication: Firebase Bearer token required.
+
+Success response:
+
+```json
+{
+  "uid": "firebase-user-uid",
+  "email": "user@example.com"
+}
+```
+
 ## 4) User APIs
 
 ### POST /api/users/sync
@@ -331,12 +361,16 @@ Response:
     "profileType": "candidate",
     "college": { "name": "" },
     "location": { "city": "", "state": "", "region": "" },
-    "skills": [],
-    "interests": [],
-    "targetRoles": [],
-    "domainInterests": [],
-    "availability": "full-time",
-    "workPreference": "remote"
+    "skills": [
+      { "name": "React", "level": "Advanced" },
+      { "name": "Node.js", "level": "Intermediate" }
+    ],
+    "interests": ["startups", "open source"],
+    "targetRoles": ["Frontend Developer", "Full Stack Developer"],
+    "domainInterests": ["EdTech", "AI"],
+    "availability": "part-time",
+    "workPreference": "hybrid",
+    "hoursPerWeek": 15
   }
 }
 ```
@@ -346,6 +380,65 @@ Failure statuses:
 - `400` invalid `userId` format
 - `404` user not found
 - `500` DB failure
+
+### GET /api/candidates/search/with-scores (Extended)
+
+When used from the Generate Team flow, the response includes matching context:
+
+```json
+{
+  "success": true,
+  "matches": [
+    {
+      "matchId": "ObjectId",
+      "candidate": {
+        "id": "ObjectId",
+        "name": "string",
+        "profileImage": "string",
+        "college": { "name": "string" },
+        "location": { "city": "string", "state": "string", "region": "string" },
+        "skills": [
+          { "name": "string", "level": "Beginner|Intermediate|Advanced" }
+        ],
+        "interests": ["string"],
+        "targetRoles": ["string"],
+        "domainInterests": ["string"],
+        "availability": "full-time|part-time|flexible",
+        "workPreference": "remote|in-person|hybrid",
+        "hoursPerWeek": 20,
+        "createdAt": "ISO date"
+      },
+      "score": 92.5,
+      "explanation": {
+        "score": 92.5,
+        "matchedSkills": ["React", "Node.js", "MongoDB"],
+        "missingSkills": ["TypeScript"],
+        "niceToHaveSkills": ["Figma"],
+        "sharedDomains": ["EdTech"],
+        "roleMatches": ["Full Stack Developer"],
+        "components": {
+          "skills": 32.0,
+          "level": 15.0,
+          "role": 15.0,
+          "domain": 15.0,
+          "availability": 7.5
+        },
+        "recommendationReason": "3 of 4 required skills matched. preferred role matches. domain interests align. availability is compatible.",
+        "scoringVersion": "v1",
+        "availabilityFallback": false
+      },
+      "matchedRoles": ["Full Stack Developer"],
+      "invitationStatus": "Pending|Accepted|Declined|Withdrawn|Team Member|null",
+      "invitationId": "ObjectId|null",
+      "teamId": "ObjectId|null",
+      "createdAt": "ISO date"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 24, "totalPages": 2 },
+  "sort": "best",
+  "minScore": 40
+}
+```
 
 ### POST /api/users/candidates/search
 
@@ -401,13 +494,65 @@ Success response:
 ## 5) Idea APIs
 
 /_
+`POST /api/ideas/:ideaId/enhance` — Enhance stored idea text.
+`POST /api/ideas/:ideaId/analyze` — Generate and store idea analysis.
+`GET /api/ideas/:ideaId/analysis` — Read stored analysis.
+`PUT /api/ideas/:ideaId/analysis` — Edit or approve stored analysis.
+`POST /api/ideas/invitations/generate-message` — Generate invitation message content for a matched candidate.
 `GET /api/ideas/discover` — Browse ideas for candidates.
 `POST /api/ideas/` — Create idea.
 `GET /api/ideas/` — List my ideas.
 `GET /api/ideas/:ideaId` — Get idea.
 `PUT /api/ideas/:ideaId` — Update idea.
 `DELETE /api/ideas/:ideaId` — Delete idea.
-_/
+_/ 
+
+### POST /api/ideas/invitations/generate-message
+
+Purpose: creates a personalized invitation draft for a founder to send to a matched candidate without creating the Invitation record itself. This is the AI composer endpoint used before the actual `POST /api/invitations` call.
+
+Authentication: Firebase Bearer token required.
+
+Request body:
+
+```json
+{
+  "ideaId": "ObjectId",
+  "candidateId": "ObjectId",
+  "role": "Frontend Developer",
+  "action": "personalize",
+  "draft": "Optional existing draft to enhance or rewrite"
+}
+```
+
+Validation rules:
+
+- `ideaId` and `candidateId` must be valid Mongo ObjectIds.
+- `role` must be a non-empty string.
+- `action` must be one of `personalize`, `enhance`, or `summarize`.
+- For `action: "enhance"`, a non-empty `draft` string is required.
+- The authenticated founder must own the idea.
+- The idea must have `aiAnalysis.isApproved === true`.
+- The candidate must already have a stored match snapshot for that idea and the requested role must be in `match.explanation.roleMatches`.
+
+Success response:
+
+```json
+{
+  "success": true,
+  "message": "A polished invitation message generated by the AI composer"
+}
+```
+
+Error statuses:
+
+- `400` invalid IDs, invalid role, invalid action, or missing draft for enhancement
+- `401` missing/invalid Firebase token or user profile not found
+- `403` user does not own the idea
+- `404` idea or candidate not found
+- `409` idea not approved or no match snapshot exists
+- `502` provider generation failure
+- `500` unexpected server error
 
 ### GET /api/ideas/discover
 
@@ -1224,6 +1369,66 @@ _/
 ### POST /api/invitations/
 
 Purpose: Enables a founder to send an invitation to a candidate to join their startup team for a specific idea.
+
+Authentication: Firebase Bearer token required via the router-level auth middleware on `backend/routes/invitationRoutes.js`.
+
+Request body:
+
+```json
+{
+  "ideaId": "ObjectId",
+  "candidateId": "ObjectId",
+  "role": "Frontend Developer",
+  "message": "Hi Jane, I'd love to invite you to join the team as the Frontend Developer."
+}
+```
+
+Validation rules:
+
+- `ideaId` and `candidateId` must be valid Mongo ObjectIds.
+- `role` must be a non-empty string with at least 2 characters.
+- `message` is optional as a trimmed string, but the controller accepts it as a user-authored invitation body.
+- The authenticated founder must own the idea.
+- The idea's AI analysis must already be approved.
+- The candidate must already have a match snapshot for the idea.
+- Duplicate pending/accepted invitations are rejected with `409`.
+- Withdrawn invitations cannot be reopened.
+
+Success response (201 Created):
+
+```json
+{
+  "success": true,
+  "invitation": {
+    "_id": "ObjectId",
+    "ideaId": "ObjectId",
+    "toCandidate": "ObjectId",
+    "fromFounder": "ObjectId",
+    "role": "Frontend Developer",
+    "message": "Hi Jane, I'd love to invite you to join the team as the Frontend Developer.",
+    "status": "Pending",
+    "matchContext": {
+      "score": 92.5,
+      "matchedSkills": ["React", "Node.js"],
+      "missingSkills": ["TypeScript"],
+      "scoringVersion": "v1"
+    }
+  }
+}
+```
+
+Error statuses:
+
+- `400` invalid IDs or missing role
+- `401` missing/invalid Firebase token or profile not found
+- `403` authenticated user is not the idea owner
+- `404` idea not found
+- `409` analysis not approved, match missing, duplicate invitation, or closed invitation
+- `500` invitation creation failure
+
+The authenticated invitation-composer AI endpoint is `POST /api/ideas/invitations/generate-message`.
+It accepts `{ ideaId, candidateId, role, action, draft }`, where `action` is `personalize`,
+`enhance`, or `summarize`, and returns editable plain message text without creating an invitation.
 
 ### GET /api/invitations/
 

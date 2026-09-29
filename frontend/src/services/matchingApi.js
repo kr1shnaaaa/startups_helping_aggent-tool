@@ -23,12 +23,50 @@ export const getCandidateMatch = async (ideaId) => {
   return response.data;
 };
 
+export const getCandidateProfile = async (candidateId) => {
+  const response = await client.get(`/users/profile/${candidateId}`);
+  return response.data;
+};
+
 export const sendInvitation = async (ideaId, candidateId, role, message = "") => {
   const response = await client.post("/invitations", {
     ideaId,
     candidateId,
     role,
     message,
+  });
+  return response.data;
+};
+
+export const generateInvitationMessage = async ({
+  ideaId,
+  candidateId,
+  role,
+  action = "personalize",
+  draft = "",
+  ideaDescription = "",
+  ideaProblem = "",
+  ideaSolution = "",
+  ideaTargetAudience = "",
+  requiredSkills = [],
+  candidateSkills = [],
+  matchedSkills = [],
+  missingSkills = [],
+}) => {
+  const response = await client.post("/ideas/invitations/generate-message", {
+    ideaId,
+    candidateId,
+    role,
+    action,
+    draft,
+    ideaDescription,
+    ideaProblem,
+    ideaSolution,
+    ideaTargetAudience,
+    requiredSkills,
+    candidateSkills,
+    matchedSkills,
+    missingSkills,
   });
   return response.data;
 };

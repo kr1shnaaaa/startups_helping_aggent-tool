@@ -4,7 +4,13 @@ const assert = require('node:assert/strict');
 const User = require('../../models/User');
 const Idea = require('../../models/Idea');
 const ai = require('../../config/vercelAI');
-const { enhanceIdea, analyzeIdea, updateAnalysis } = require('../../controllers/aiController');
+const Match = require('../../models/Match');
+const {
+  enhanceIdea,
+  analyzeIdea,
+  updateAnalysis,
+  generateInvitationMessage,
+} = require('../../controllers/aiController');
 const { updateIdea } = require('../../controllers/ideaController');
 
 const owner = { _id: 'owner-id', firebaseUid: 'owner-uid' };
@@ -282,5 +288,101 @@ test('saving enhanced idea advances status to enhanced and preserves raw and aiA
   } finally {
     Idea.findByIdAndUpdate = originalFindByIdAndUpdate;
     restore();
+  }
+});
+
+test('invitation AI endpoint forwards each supported action and verified context', async () => {
+  const idea = createIdea({
+    _id: '507f1f77bcf86cd799439011',
+    aiAnalysis: {
+      isApproved: true,
+      rolesAndSkills: [{ role: 'Frontend Developer', skills: ['React'] }],
+    },
+    enhanced: {
+      title: 'Enhanced Campus Marketplace',
+      description: 'A refined marketplace for local campus exchanges.',
+      problem: 'Students struggle to find useful goods nearby.',
+      solution: 'A verified local exchange for students.',
+      targetAudience: 'College students',
+    },
+  });
+  const candidate = {
+    _id: '507f1f77bcf86cd799439012',
+    name: 'Candidate User',
+    profileType: 'candidate',
+    profileCompleted: true,
+    skills: [{ name: 'React', level: 'Advanced' }],
+  };
+  const restoreUserFindOne = User.findOne;
+  const restoreIdeaFindById = Idea.findById;
+  const restoreMatchFindOne = Match.findOne;
+  const restoreGenerator = ai.generateInvitationMessage;
+  const calls = [];
+
+  User.findOne = async (query) => (query.firebaseUid ? owner : candidate);
+  Idea.findById = async () => idea;
+  Match.findOne = async () => ({
+    explanation: {
+      roleMatches: ['Frontend Developer'],
+      matchedSkills: ['React'],
+      missingSkills: [],
+    },
+    matchScore: 88,
+  });
+  ai.generateInvitationMessage = async (input) => {
+    calls.push(input);
+    return `generated ${input.action}`;
+  };
+
+  try {
+    for (const action of ['personalize', 'enhance', 'summarize']) {
+      const res = response();
+      await generateInvitationMessage({
+        user: { uid: owner.firebaseUid },
+        body: {
+          ideaId: idea._id,
+          candidateId: candidate._id,
+          role: 'Frontend Developer',
+          action,
+          draft: action === 'enhance' ? 'Founder draft.' : '',
+        },
+      }, res);
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.message, `generated ${action}`);
+    }
+
+    assert.deepEqual(calls.map((call) => call.action), ['personalize', 'enhance', 'summarize']);
+    assert.equal(calls[0].ideaTitle, 'Enhanced Campus Marketplace');
+    assert.deepEqual(calls[0].candidateSkills, ['React']);
+    assert.equal(calls[1].draft, 'Founder draft.');
+    assert.equal(calls[2].ideaProblem, 'Students struggle to find useful goods nearby.');
+  } finally {
+    User.findOne = restoreUserFindOne;
+    Idea.findById = restoreIdeaFindById;
+    Match.findOne = restoreMatchFindOne;
+    ai.generateInvitationMessage = restoreGenerator;
+  }
+});
+
+test('invitation AI endpoint rejects unsupported actions and missing enhancement drafts', async () => {
+  const restoreUserFindOne = User.findOne;
+  User.findOne = async () => owner;
+
+  try {
+    const invalidAction = response();
+    await generateInvitationMessage({
+      user: { uid: owner.firebaseUid },
+      body: { ideaId: '507f1f77bcf86cd799439011', candidateId: '507f1f77bcf86cd799439012', role: 'Frontend Developer', action: 'bulk' },
+    }, invalidAction);
+    assert.equal(invalidAction.statusCode, 400);
+
+    const missingDraft = response();
+    await generateInvitationMessage({
+      user: { uid: owner.firebaseUid },
+      body: { ideaId: '507f1f77bcf86cd799439011', candidateId: '507f1f77bcf86cd799439012', role: 'Frontend Developer', action: 'enhance' },
+    }, missingDraft);
+    assert.equal(missingDraft.statusCode, 400);
+  } finally {
+    User.findOne = restoreUserFindOne;
   }
 });
