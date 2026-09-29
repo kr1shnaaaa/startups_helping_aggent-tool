@@ -460,7 +460,9 @@ const InvitationComposer = ({
                   disabled={generating || sending || !message.trim()}
                   style={{ fontSize: "0.8rem" }}
                 >
-                  {generatingAction === "enhance" ? "Enhancing..." : "Enhance My Draft"}
+                  {generatingAction === "enhance"
+                    ? "Enhancing..."
+                    : "Enhance My Draft"}
                 </Button>
                 <Button
                   variant="secondary"
@@ -468,7 +470,9 @@ const InvitationComposer = ({
                   disabled={generating || sending}
                   style={{ fontSize: "0.8rem" }}
                 >
-                  {generatingAction === "summarize" ? "Summarizing..." : "Summarize Startup Idea"}
+                  {generatingAction === "summarize"
+                    ? "Summarizing..."
+                    : "Summarize Startup Idea"}
                 </Button>
               </div>
             </div>

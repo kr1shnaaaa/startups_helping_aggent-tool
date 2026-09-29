@@ -245,7 +245,8 @@ const GenerateTeamPage = () => {
       ideaDescription: idea?.enhanced?.description || idea?.description || "",
       ideaProblem: idea?.enhanced?.problem || idea?.problemStatement || "",
       ideaSolution: idea?.enhanced?.solution || "",
-      ideaTargetAudience: idea?.enhanced?.targetAudience || idea?.targetUsers || "",
+      ideaTargetAudience:
+        idea?.enhanced?.targetAudience || idea?.targetUsers || "",
     });
   };
 
@@ -267,13 +268,7 @@ const GenerateTeamPage = () => {
     } else {
       executeSearch(pagination.page);
     }
-  }, [
-    activeTab,
-    executeGenerateTeam,
-    executeSearch,
-    idea,
-    pagination.page,
-  ]);
+  }, [activeTab, executeGenerateTeam, executeSearch, idea, pagination.page]);
 
   if (loading) {
     return (
