@@ -1,6 +1,8 @@
 const dotenv = require('dotenv');
 const dns = require('dns');
 const mongoose = require('mongoose');
+const Invitation = require('../models/Invitation');
+const migrateInvitationIndexes = require('../scripts/migrateInvitationIndexes');
 
 dotenv.config();
 dns.setServers(['1.1.1.1', '1.0.0.1']);
@@ -25,6 +27,7 @@ const connectToDatabase = async () => {
       socketTimeoutMS: 20000,
     });
 
+    await migrateInvitationIndexes(Invitation);
     console.log(`MongoDB connected to database: ${process.env.MONGODB_DATABASE_NAME}`);
   } catch (error) {
     console.error('MongoDB connection failed. Check MONGODB_URI, network access, and Atlas IP allowlist.', {

@@ -165,8 +165,12 @@ const InvitationComposer = ({
         setError(
           "An invitation is already pending or accepted for this candidate.",
         );
+      else if (status === 409 && code === "INVITATION_DECLINED")
+        setError("A previous invitation was declined and cannot be reopened.");
       else if (status === 409 && code === "INVITATION_CLOSED")
-        setError("A previous invitation was withdrawn and cannot be reopened.");
+        setError(
+          "A previous invitation was withdrawn. You can send a new invitation for this candidate.",
+        );
       else if (status === 409 && code === "MATCH_REQUIRED")
         setError("Candidate must have a match snapshot first.");
       else if (status === 409)

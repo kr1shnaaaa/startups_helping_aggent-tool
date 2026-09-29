@@ -100,16 +100,19 @@ const searchMatches = async (req, res) => {
 
     const candidateIds = candidates.map((candidate) => candidate._id);
     const [invitations, teams] = await Promise.all([
-      Invitation.find({ ideaId: idea._id, toCandidate: { $in: candidateIds } }).select('_id toCandidate status').lean(),
+      Invitation.find({ ideaId: idea._id, toCandidate: { $in: candidateIds } }).select('_id toCandidate status createdAt').sort({ createdAt: -1 }).lean(),
       Team.find({ ideaId: idea._id, 'members.userId': { $in: candidateIds } }).select('_id members.userId').lean(),
     ]);
 
     const invitationByCandidate = new Map();
     for (const invitation of invitations) {
-      invitationByCandidate.set(String(invitation.toCandidate), {
-        invitationId: invitation._id,
-        status: invitation.status,
-      });
+      const candidateKey = String(invitation.toCandidate);
+      if (!invitationByCandidate.has(candidateKey)) {
+        invitationByCandidate.set(candidateKey, {
+          invitationId: invitation._id,
+          status: invitation.status,
+        });
+      }
     }
 
     const teamByCandidate = new Map();

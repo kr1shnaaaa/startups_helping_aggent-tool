@@ -34,6 +34,16 @@ const getUserFriendlyError = (err, fallback = "Something went wrong") => {
   if (status === 403) return "You do not have permission to view this idea.";
   if (status === 404) return "The idea could not be found.";
   if (status === 409) {
+    const code = err?.response?.data?.code || err?.code;
+    if (code === "INVITATION_CLOSED") {
+      return "A previous invitation was withdrawn. You can send a new invitation for this candidate.";
+    }
+    if (code === "INVITATION_EXISTS") {
+      return "This candidate already has an active invitation for this idea.";
+    }
+    if (code === "INVITATION_DECLINED") {
+      return "A previous invitation was declined and cannot be reopened.";
+    }
     return "This idea’s analysis is not approved yet. Please return to the analysis step and approve it before generating team recommendations.";
   }
 

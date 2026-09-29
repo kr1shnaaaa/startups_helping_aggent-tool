@@ -29,10 +29,17 @@ const sendInvitation = async (req, res) => {
     if (!candidate || String(candidate._id) === String(founder._id)) return res.status(400).json({ success: false, message: 'Eligible candidate not found', code: 'INVALID_CANDIDATE' });
     const match = await Match.findOne({ ideaId, userId: candidateId }).lean();
     if (!match) return res.status(409).json({ success: false, message: 'Candidate must have a match snapshot first', code: 'MATCH_REQUIRED' });
-    const existing = await Invitation.findOne({ ideaId, toCandidate: candidateId });
-    if (existing?.status === 'Pending' || existing?.status === 'Accepted') return res.status(409).json({ success: false, message: 'Invitation already exists', code: 'INVITATION_EXISTS' });
-    if (existing?.status === 'Withdrawn') return res.status(409).json({ success: false, message: 'Withdrawn invitations cannot be reopened', code: 'INVITATION_CLOSED' });
+
+    const historicalInvitations = await Invitation.find({ ideaId, toCandidate: candidateId }).sort({ createdAt: -1 }).lean();
+    const activeInvitation = historicalInvitations.find((entry) => ['Pending', 'Accepted'].includes(entry.status));
+    if (activeInvitation) return res.status(409).json({ success: false, message: 'Invitation already exists', code: 'INVITATION_EXISTS' });
+    if (historicalInvitations.length > 0 && !historicalInvitations.some((entry) => entry.status === 'Withdrawn') && historicalInvitations[0].status === 'Declined') {
+      return res.status(409).json({ success: false, message: 'A previous invitation was declined and cannot be reopened', code: 'INVITATION_DECLINED' });
+    }
+
     const values = {
+      ideaId,
+      toCandidate: candidate._id,
       fromFounder: founder._id,
       role: role.trim(),
       message: typeof message === 'string' ? message.trim() : undefined,
@@ -42,11 +49,9 @@ const sendInvitation = async (req, res) => {
       respondedAt: undefined,
       withdrawnAt: undefined,
     };
-    const invitation = existing
-      ? await Invitation.findOneAndUpdate({ _id: existing._id, status: 'Declined' }, { $set: values }, { new: true, runValidators: true })
-      : await Invitation.create({ ideaId, toCandidate: candidate._id, ...values });
+    const invitation = await Invitation.create(values);
     if (!invitation) return res.status(409).json({ success: false, message: 'Invitation state changed; retry', code: 'INVITATION_CONFLICT' });
-    return res.status(existing ? 200 : 201).json({ success: true, invitation });
+    return res.status(201).json({ success: true, invitation });
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ success: false, message: 'Invitation already exists', code: 'INVITATION_EXISTS' });
     console.error('[ERROR] POST /invitations:', error.message);

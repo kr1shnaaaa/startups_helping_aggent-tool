@@ -505,7 +505,7 @@ Success response:
 `GET /api/ideas/:ideaId` — Get idea.
 `PUT /api/ideas/:ideaId` — Update idea.
 `DELETE /api/ideas/:ideaId` — Delete idea.
-_/ 
+_/
 
 ### POST /api/ideas/invitations/generate-message
 

@@ -24,10 +24,18 @@ const invitationSchema = new mongoose.Schema(
     withdrawnAt: Date,
     teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
   },
-  { timestamps: true },
+  { timestamps: true, autoIndex: false },
 );
 
-invitationSchema.index({ ideaId: 1, toCandidate: 1 }, { unique: true });
+invitationSchema.index(
+  { ideaId: 1, toCandidate: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: { $in: ['Pending', 'Accepted'] } },
+    name: 'idea_candidate_active_unique',
+  },
+);
+invitationSchema.index({ ideaId: 1, toCandidate: 1, createdAt: -1 });
 invitationSchema.index({ fromFounder: 1, status: 1 });
 invitationSchema.index({ toCandidate: 1, status: 1 });
 invitationSchema.index({ teamId: 1, status: 1 });
