@@ -35,6 +35,10 @@ const CandidateCard = ({
   onViewProfile,
   sending = false,
   sendError = "",
+  selectable = false,
+  selected = false,
+  onSelectToggle,
+  selectionDisabled = false,
 }) => {
   const {
     name,
@@ -96,6 +100,35 @@ const CandidateCard = ({
             alignItems: "center",
           }}
         >
+          {selectable && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+              title={
+                selectionDisabled
+                  ? "Candidate already has an active invitation or team membership"
+                  : `Select ${name || "candidate"}`
+              }
+            >
+              <input
+                type="checkbox"
+                checked={selected}
+                disabled={selectionDisabled}
+                onChange={() => onSelectToggle?.(candidate, match)}
+                aria-label={`Select ${name || "candidate"}`}
+                style={{
+                  width: "18px",
+                  height: "18px",
+                  cursor: selectionDisabled ? "not-allowed" : "pointer",
+                  accentColor: "var(--accent)",
+                }}
+              />
+            </div>
+          )}
           <div
             style={{
               width: "48px",

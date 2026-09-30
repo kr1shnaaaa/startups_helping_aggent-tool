@@ -8,9 +8,11 @@ import LoadingState from "../../components/common/LoadingState";
 import ErrorState from "../../components/common/ErrorState";
 import CandidateCard from "../../components/matching/CandidateCard";
 import CandidateProfileModal from "../../components/matching/CandidateProfileModal";
+import BulkInvitationComposer from "../../components/matching/BulkInvitationComposer";
 import {
   groupMatchesByRequiredRoles,
   MAX_CANDIDATES_PER_ROLE,
+  normalizeInvitationStatus,
 } from "../../utils/matchGrouping";
 import {
   searchMatches,
@@ -76,6 +78,13 @@ const GenerateTeamPage = () => {
     candidateId: null,
     matchContext: {},
     roleContext: null,
+  });
+  const [selectedCandidatesByRole, setSelectedCandidatesByRole] = useState({});
+  const [bulkComposer, setBulkComposer] = useState({
+    isOpen: false,
+    role: "",
+    selectedCandidates: [],
+    requiredSkills: [],
   });
   const isMountedRef = useRef(true);
   const hasSearchedRef = useRef(false);
@@ -149,6 +158,105 @@ const GenerateTeamPage = () => {
       }
     },
     [ideaId],
+  );
+
+  const isCandidateEligibleForInvitation = useCallback((invitationStatus) => {
+    const status = normalizeInvitationStatus(invitationStatus);
+    return !["Pending", "Accepted", "Team Member"].includes(status);
+  }, []);
+
+  const handleToggleCandidateSelection = useCallback((role, item) => {
+    const candidateId = item.candidate?._id || item.candidate?.id;
+    if (!candidateId) return;
+
+    setSelectedCandidatesByRole((prev) => {
+      const currentList = prev[role] || [];
+      const exists = currentList.some(
+        (c) => (c.candidate?._id || c.candidate?.id) === candidateId,
+      );
+      const updatedList = exists
+        ? currentList.filter(
+            (c) => (c.candidate?._id || c.candidate?.id) !== candidateId,
+          )
+        : [...currentList, { ...item, role }];
+
+      return { ...prev, [role]: updatedList };
+    });
+  }, []);
+
+  const handleSelectAllForRole = useCallback(
+    (role, candidateItems) => {
+      const eligibleItems = candidateItems
+        .slice(0, MAX_CANDIDATES_PER_ROLE)
+        .filter((item) => isCandidateEligibleForInvitation(item.invitationStatus));
+
+      setSelectedCandidatesByRole((prev) => {
+        const currentList = prev[role] || [];
+        const isAllSelected =
+          eligibleItems.length > 0 &&
+          eligibleItems.every((item) =>
+            currentList.some(
+              (c) =>
+                (c.candidate?._id || c.candidate?.id) ===
+                (item.candidate?._id || item.candidate?.id),
+            ),
+          );
+
+        return {
+          ...prev,
+          [role]: isAllSelected
+            ? []
+            : eligibleItems.map((item) => ({ ...item, role })),
+        };
+      });
+    },
+    [isCandidateEligibleForInvitation],
+  );
+
+  const handleOpenBulkComposer = useCallback(
+    (role, requiredSkills = []) => {
+      const selected = selectedCandidatesByRole[role] || [];
+      if (selected.length === 0) return;
+
+      setBulkComposer({
+        isOpen: true,
+        role,
+        selectedCandidates: selected,
+        requiredSkills,
+      });
+    },
+    [selectedCandidatesByRole],
+  );
+
+  const handleBulkComposerClose = useCallback(() => {
+    setBulkComposer((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  const handleBulkComposerSuccess = useCallback(
+    ({ results = [] } = {}) => {
+      setSelectedCandidatesByRole((prev) => {
+        const updated = { ...prev };
+        const successfulIds = new Set(
+          results
+            .filter((r) => r.success)
+            .map((r) => r.candidateId || r.candidate?._id || r.candidate?.id)
+            .filter(Boolean),
+        );
+        for (const r of Object.keys(updated)) {
+          updated[r] = (updated[r] || []).filter(
+            (c) => !successfulIds.has(c.candidate?._id || c.candidate?.id),
+          );
+        }
+        return updated;
+      });
+
+      if (activeTab === "generate") {
+        executeGenerateTeam(idea?.aiAnalysis?.rolesAndSkills || []);
+      } else {
+        executeSearch(pagination.page);
+      }
+    },
+    [activeTab, executeGenerateTeam, executeSearch, idea, pagination.page],
   );
 
   useEffect(() => {
@@ -392,92 +500,219 @@ const GenerateTeamPage = () => {
                         <div
                           style={{ display: "grid", gap: "var(--space-lg)" }}
                         >
-                          {generateTeamResults.map((roleGroup, idx) => (
-                            <Card
-                              key={idx}
-                              style={{ padding: "var(--space-lg)" }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "flex-start",
-                                  gap: "var(--space-md)",
-                                  marginBottom: "var(--space-md)",
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <div>
-                                  <h2 style={{ margin: 0 }}>
-                                    {roleGroup.role}
-                                  </h2>
-                                  {(roleGroup.skills || []).length > 0 && (
-                                    <p
-                                      style={{
-                                        color: "var(--muted)",
-                                        fontSize: "0.9rem",
-                                        margin: "4px 0 0 0",
-                                      }}
-                                    >
-                                      Required skills:{" "}
-                                      {(roleGroup.skills || []).join(", ")}
-                                    </p>
-                                  )}
-                                </div>
-                                <Badge variant="accent">
-                                  {roleGroup.candidates.length} candidate
-                                  {roleGroup.candidates.length !== 1 ? "s" : ""}
-                                  {" found"}
-                                </Badge>
-                              </div>
+                          {generateTeamResults.map((roleGroup, idx) => {
+                            const selectedInRole =
+                              selectedCandidatesByRole[roleGroup.role] || [];
+                            const eligibleInRole = roleGroup.candidates
+                              .slice(0, MAX_CANDIDATES_PER_ROLE)
+                              .filter((item) =>
+                                isCandidateEligibleForInvitation(
+                                  item.invitationStatus,
+                                ),
+                              );
+                            const isAllSelected =
+                              eligibleInRole.length > 0 &&
+                              eligibleInRole.every((item) =>
+                                selectedInRole.some(
+                                  (c) =>
+                                    (c.candidate?._id || c.candidate?.id) ===
+                                    (item.candidate?._id || item.candidate?.id),
+                                ),
+                              );
 
-                              {roleGroup.candidates.length === 0 ? (
-                                <p style={{ color: "var(--muted)", margin: 0 }}>
-                                  No matching candidates found for this role
-                                  yet.
-                                </p>
-                              ) : (
+                            return (
+                              <Card
+                                key={idx}
+                                style={{ padding: "var(--space-lg)" }}
+                              >
                                 <div
                                   style={{
-                                    display: "grid",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "flex-start",
                                     gap: "var(--space-md)",
+                                    marginBottom: "var(--space-md)",
+                                    flexWrap: "wrap",
                                   }}
                                 >
-                                  {roleGroup.candidates
-                                    .slice(0, MAX_CANDIDATES_PER_ROLE)
-                                    .map((item, cidx) => (
-                                      <CandidateCard
-                                        key={
-                                          item.candidate?._id ||
-                                          item.candidate?.id ||
-                                          cidx
-                                        }
-                                        candidate={item.candidate || {}}
-                                        match={{
-                                          ...(item.explanation || {}),
-                                          score: item.score,
-                                          invitationStatus:
-                                            item.invitationStatus,
-                                          invitationId: item.invitationId,
-                                          teamId: item.teamId,
-                                          role: roleGroup.role,
-                                          requiredSkills: roleGroup.skills,
-                                          matchedRoles: item.matchedRoles,
+                                  <div>
+                                    <h2 style={{ margin: 0 }}>
+                                      {roleGroup.role}
+                                    </h2>
+                                    {(roleGroup.skills || []).length > 0 && (
+                                      <p
+                                        style={{
+                                          color: "var(--muted)",
+                                          fontSize: "0.9rem",
+                                          margin: "4px 0 0 0",
                                         }}
-                                        onSendRequest={handleSendRequest}
-                                        onViewProfile={handleViewProfile}
-                                        sending={
-                                          sendingId ===
-                                          (item.candidate?._id ||
-                                            item.candidate?.id)
-                                        }
-                                        sendError={sendError}
-                                      />
-                                    ))}
+                                      >
+                                        Required skills:{" "}
+                                        {(roleGroup.skills || []).join(", ")}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <Badge variant="accent">
+                                    {roleGroup.candidates.length} candidate
+                                    {roleGroup.candidates.length !== 1
+                                      ? "s"
+                                      : ""}
+                                    {" found"}
+                                  </Badge>
                                 </div>
-                              )}
-                            </Card>
-                          ))}
+
+                                {/* Multi-candidate Selection Toolbar */}
+                                {eligibleInRole.length > 0 && (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      alignItems: "center",
+                                      gap: "var(--space-md)",
+                                      padding:
+                                        "var(--space-sm) var(--space-md)",
+                                      background: "var(--bg)",
+                                      borderRadius: "var(--radius-sm)",
+                                      border: "1px solid var(--line)",
+                                      marginBottom: "var(--space-md)",
+                                      flexWrap: "wrap",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "var(--space-sm)",
+                                      }}
+                                    >
+                                      <Button
+                                        variant="secondary"
+                                        style={{
+                                          fontSize: "0.8rem",
+                                          padding:
+                                            "var(--space-xs) var(--space-sm)",
+                                        }}
+                                        onClick={() =>
+                                          handleSelectAllForRole(
+                                            roleGroup.role,
+                                            roleGroup.candidates,
+                                          )
+                                        }
+                                      >
+                                        {isAllSelected
+                                          ? "Deselect All"
+                                          : `Select All (${eligibleInRole.length})`}
+                                      </Button>
+                                      <span
+                                        style={{
+                                          fontSize: "0.85rem",
+                                          color:
+                                            selectedInRole.length > 0
+                                              ? "var(--ink)"
+                                              : "var(--muted)",
+                                          fontWeight:
+                                            selectedInRole.length > 0
+                                              ? 600
+                                              : 400,
+                                        }}
+                                      >
+                                        {selectedInRole.length} candidate
+                                        {selectedInRole.length !== 1 ? "s" : ""}{" "}
+                                        selected
+                                      </span>
+                                    </div>
+
+                                    <Button
+                                      variant="primary"
+                                      disabled={selectedInRole.length === 0}
+                                      onClick={() =>
+                                        handleOpenBulkComposer(
+                                          roleGroup.role,
+                                          roleGroup.skills,
+                                        )
+                                      }
+                                      style={{
+                                        fontSize: "0.85rem",
+                                        padding:
+                                          "var(--space-xs) var(--space-md)",
+                                      }}
+                                    >
+                                      {selectedInRole.length > 0
+                                        ? `Send Invitations (${selectedInRole.length})`
+                                        : "Send Invitations"}
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {roleGroup.candidates.length === 0 ? (
+                                  <p
+                                    style={{
+                                      color: "var(--muted)",
+                                      margin: 0,
+                                    }}
+                                  >
+                                    No matching candidates found for this role
+                                    yet.
+                                  </p>
+                                ) : (
+                                  <div
+                                    style={{
+                                      display: "grid",
+                                      gap: "var(--space-md)",
+                                    }}
+                                  >
+                                    {roleGroup.candidates
+                                      .slice(0, MAX_CANDIDATES_PER_ROLE)
+                                      .map((item, cidx) => {
+                                        const candidateId =
+                                          item.candidate?._id ||
+                                          item.candidate?.id;
+                                        const isSelected = selectedInRole.some(
+                                          (c) =>
+                                            (c.candidate?._id ||
+                                              c.candidate?.id) === candidateId,
+                                        );
+                                        const isEligible =
+                                          isCandidateEligibleForInvitation(
+                                            item.invitationStatus,
+                                          );
+
+                                        return (
+                                          <CandidateCard
+                                            key={candidateId || cidx}
+                                            candidate={item.candidate || {}}
+                                            match={{
+                                              ...(item.explanation || {}),
+                                              score: item.score,
+                                              invitationStatus:
+                                                item.invitationStatus,
+                                              invitationId: item.invitationId,
+                                              teamId: item.teamId,
+                                              role: roleGroup.role,
+                                              requiredSkills: roleGroup.skills,
+                                              matchedRoles: item.matchedRoles,
+                                            }}
+                                            selectable={true}
+                                            selected={isSelected}
+                                            selectionDisabled={!isEligible}
+                                            onSelectToggle={() =>
+                                              handleToggleCandidateSelection(
+                                                roleGroup.role,
+                                                item,
+                                              )
+                                            }
+                                            onSendRequest={handleSendRequest}
+                                            onViewProfile={handleViewProfile}
+                                            sending={sendingId === candidateId}
+                                            sendError={sendError}
+                                          />
+                                        );
+                                      })}
+                                  </div>
+                                )}
+                              </Card>
+                            );
+                          })}
                         </div>
                       )}
                     </>
@@ -877,6 +1112,23 @@ const GenerateTeamPage = () => {
         ideaTitle={profileModal.ideaTitle}
         ideaDescription={profileModal.ideaDescription}
         onInvitationStateChange={handleInvitationStateChange}
+      />
+
+      <BulkInvitationComposer
+        isOpen={bulkComposer.isOpen}
+        onClose={handleBulkComposerClose}
+        onSuccess={handleBulkComposerSuccess}
+        ideaId={ideaId}
+        ideaTitle={idea?.enhanced?.title || idea?.title || "Idea"}
+        ideaDescription={idea?.enhanced?.description || idea?.description || ""}
+        ideaProblem={idea?.enhanced?.problem || idea?.problemStatement || ""}
+        ideaSolution={idea?.enhanced?.solution || ""}
+        ideaTargetAudience={
+          idea?.enhanced?.targetAudience || idea?.targetUsers || ""
+        }
+        selectedCandidates={bulkComposer.selectedCandidates}
+        role={bulkComposer.role}
+        requiredSkills={bulkComposer.requiredSkills}
       />
     </AppLayout>
   );

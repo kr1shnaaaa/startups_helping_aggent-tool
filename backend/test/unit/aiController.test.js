@@ -319,15 +319,26 @@ test('invitation AI endpoint forwards each supported action and verified context
   const restoreGenerator = ai.generateInvitationMessage;
   const calls = [];
 
-  User.findOne = async (query) => (query.firebaseUid ? owner : candidate);
-  Idea.findById = async () => idea;
-  Match.findOne = async () => ({
+  User.findOne = (query) => {
+    if (query.firebaseUid) return owner;
+    return { ...candidate, lean: async () => candidate };
+  };
+  Idea.findById = () => ({ lean: async () => idea });
+  Match.findOne = () => ({
     explanation: {
       roleMatches: ['Frontend Developer'],
       matchedSkills: ['React'],
       missingSkills: [],
     },
     matchScore: 88,
+    lean: async () => ({
+      explanation: {
+        roleMatches: ['Frontend Developer'],
+        matchedSkills: ['React'],
+        missingSkills: [],
+      },
+      matchScore: 88,
+    }),
   });
   ai.generateInvitationMessage = async (input) => {
     calls.push(input);
