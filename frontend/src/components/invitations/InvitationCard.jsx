@@ -14,8 +14,10 @@ const formatDate = (value) => {
   }).format(date);
 };
 
-const getIdeaTitle = (invitation) => invitation?.ideaId?.title || "Startup opportunity";
-const getFounderName = (invitation) => invitation?.fromFounder?.name || "Founder";
+const getIdeaTitle = (invitation) =>
+  invitation?.ideaId?.title || "Startup opportunity";
+const getFounderName = (invitation) =>
+  invitation?.fromFounder?.name || "Founder";
 const getStatusValue = (invitation) => {
   const value = invitation?.status || "Pending";
   return String(value).trim() || "Pending";
@@ -42,7 +44,8 @@ const InvitationCard = ({ invitation, onViewDetails }) => {
         borderRadius: "var(--radius-md)",
         boxShadow: "var(--shadow-md)",
         padding: "var(--space-lg)",
-        borderColor: status === "Pending" ? "rgba(15, 118, 110, 0.35)" : "var(--line)",
+        borderColor:
+          status === "Pending" ? "rgba(15, 118, 110, 0.35)" : "var(--line)",
       }}
     >
       <div
@@ -56,12 +59,23 @@ const InvitationCard = ({ invitation, onViewDetails }) => {
         }}
       >
         <div>
-          <div style={{ color: "var(--muted)", fontSize: "0.8rem", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          <div
+            style={{
+              color: "var(--muted)",
+              fontSize: "0.8rem",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
             {invitation?.ideaId?.domain || "Startup"}
           </div>
-          <h3 style={{ margin: "6px 0 0", fontSize: "1.35rem" }}>{getIdeaTitle(invitation)}</h3>
+          <h3 style={{ margin: "6px 0 0", fontSize: "1.35rem" }}>
+            {getIdeaTitle(invitation)}
+          </h3>
         </div>
-        <Badge variant={status === "Pending" ? "accent" : "neutral"}>{status}</Badge>
+        <Badge variant={status === "Pending" ? "accent" : "neutral"}>
+          {status}
+        </Badge>
       </div>
 
       <div style={{ color: "var(--muted)", marginBottom: "var(--space-sm)" }}>
@@ -72,14 +86,25 @@ const InvitationCard = ({ invitation, onViewDetails }) => {
         <strong>Role:</strong> {invitation?.role || "Role unspecified"}
       </div>
 
-      <p style={{ margin: "0 0 var(--space-md)", color: "var(--ink)", whiteSpace: "pre-wrap" }}>
+      <p
+        style={{
+          margin: "0 0 var(--space-md)",
+          color: "var(--ink)",
+          whiteSpace: "pre-wrap",
+        }}
+      >
         {invitation?.message || "No invitation message provided."}
       </p>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
-        {score !== null && (
-          <Badge variant="accent">Match {score}%</Badge>
-        )}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "var(--space-sm)",
+          marginBottom: "var(--space-md)",
+        }}
+      >
+        {score !== null && <Badge variant="accent">Match {score}%</Badge>}
         {matchedSkills.slice(0, 3).map((skill) => (
           <Badge key={skill}>{skill}</Badge>
         ))}
@@ -102,7 +127,9 @@ const InvitationCard = ({ invitation, onViewDetails }) => {
           paddingTop: "var(--space-md)",
         }}
       >
-        <span style={{ color: "var(--muted)" }}>Received: {formatDate(invitation?.createdAt)}</span>
+        <span style={{ color: "var(--muted)" }}>
+          Received: {formatDate(invitation?.createdAt)}
+        </span>
         <Button variant="secondary" onClick={() => onViewDetails(invitation)}>
           View Details
         </Button>

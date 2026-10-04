@@ -30,12 +30,17 @@ const CandidateInvitationsPage = () => {
     setError("");
 
     try {
-      const response = await listInvitations(direction, filter === "All" ? "" : filter);
-      const nextInvitations = normalizeInvitationsResponse(response).sort((a, b) => {
-        const aTime = new Date(a?.createdAt || 0).getTime();
-        const bTime = new Date(b?.createdAt || 0).getTime();
-        return bTime - aTime;
-      });
+      const response = await listInvitations(
+        direction,
+        filter === "All" ? "" : filter,
+      );
+      const nextInvitations = normalizeInvitationsResponse(response).sort(
+        (a, b) => {
+          const aTime = new Date(a?.createdAt || 0).getTime();
+          const bTime = new Date(b?.createdAt || 0).getTime();
+          return bTime - aTime;
+        },
+      );
       setInvitations(nextInvitations);
     } catch (err) {
       const status = err?.status || err?.response?.status;
@@ -93,7 +98,11 @@ const CandidateInvitationsPage = () => {
           return current;
         }
 
-        return { ...current, ...updatedInvitation, status: updatedInvitation.status || current.status };
+        return {
+          ...current,
+          ...updatedInvitation,
+          status: updatedInvitation.status || current.status,
+        };
       });
       void fetchInvitations();
     },
@@ -121,9 +130,17 @@ const CandidateInvitationsPage = () => {
 
   return (
     <AppLayout>
-      <div style={{ padding: "var(--space-lg)", maxWidth: "1200px", margin: "0 auto" }}>
+      <div
+        style={{
+          padding: "var(--space-lg)",
+          maxWidth: "1200px",
+          margin: "0 auto",
+        }}
+      >
         <div style={{ marginBottom: "var(--space-lg)" }}>
-          <h1 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.7rem)" }}>Invitations</h1>
+          <h1 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.7rem)" }}>
+            Invitations
+          </h1>
           <p style={{ margin: "8px 0 0", color: "var(--muted)" }}>
             {profileType === "founder"
               ? "Review the invitations you have sent to candidates."
@@ -178,7 +195,11 @@ const CandidateInvitationsPage = () => {
           >
             {invitations.map((invitation) => (
               <InvitationCard
-                key={invitation?._id || invitation?.id || `${invitation?.ideaId?._id || "idea"}-${invitation?.role || "role"}`}
+                key={
+                  invitation?._id ||
+                  invitation?.id ||
+                  `${invitation?.ideaId?._id || "idea"}-${invitation?.role || "role"}`
+                }
                 invitation={invitation}
                 onViewDetails={setSelectedInvitation}
               />

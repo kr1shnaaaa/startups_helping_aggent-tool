@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Badge from "../common/Badge";
 import Button from "../common/Button";
-import { acceptInvitation, declineInvitation, getIdeaById } from "../../services/matchingApi";
+import {
+  acceptInvitation,
+  declineInvitation,
+  getIdeaById,
+} from "../../services/matchingApi";
 
 const formatDate = (value) => {
   if (!value) return "N/A";
@@ -65,16 +69,26 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
   const score = Number.isFinite(Number(matchContext.score))
     ? Math.round(Number(matchContext.score))
     : null;
-  const roleContext = invitation?.matchContext?.roleContext || invitation?.roleContext || null;
+  const roleContext =
+    invitation?.matchContext?.roleContext || invitation?.roleContext || null;
 
   const idea = useMemo(() => {
     const potentialIdea = projectDetails || invitation?.ideaId || {};
     return {
       title: potentialIdea.title || "Startup opportunity",
       description: potentialIdea.description || potentialIdea.summary || "",
-      problem: potentialIdea.problemStatement || potentialIdea.problem || potentialIdea.enhanced?.problem || "",
-      solution: potentialIdea.solution || potentialIdea.enhanced?.solution || "",
-      targetAudience: potentialIdea.targetUsers || potentialIdea.targetAudience || potentialIdea.enhanced?.targetAudience || "",
+      problem:
+        potentialIdea.problemStatement ||
+        potentialIdea.problem ||
+        potentialIdea.enhanced?.problem ||
+        "",
+      solution:
+        potentialIdea.solution || potentialIdea.enhanced?.solution || "",
+      targetAudience:
+        potentialIdea.targetUsers ||
+        potentialIdea.targetAudience ||
+        potentialIdea.enhanced?.targetAudience ||
+        "",
     };
   }, [invitation, projectDetails]);
 
@@ -90,19 +104,34 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
     setConfirmAction(null);
 
     try {
-      const response = action === "accept" ? await acceptInvitation(invitation._id) : await declineInvitation(invitation._id);
-      const updatedInvitation = response?.invitation || response || { ...invitation, status: action === "accept" ? "Accepted" : "Declined" };
+      const response =
+        action === "accept"
+          ? await acceptInvitation(invitation._id)
+          : await declineInvitation(invitation._id);
+      const updatedInvitation = response?.invitation ||
+        response || {
+          ...invitation,
+          status: action === "accept" ? "Accepted" : "Declined",
+        };
       onStatusChange?.(updatedInvitation);
       setPendingAction(null);
     } catch (error) {
       const status = error?.status || error?.response?.status;
-      const backendMessage = error?.message || "Unable to update this invitation. Please try again.";
+      const backendMessage =
+        error?.message || "Unable to update this invitation. Please try again.";
       if (status === 401) {
         setStatusError("Your session has expired. Please sign in again.");
       } else if (status === 404 || status === 409) {
-        setStatusError("This invitation is no longer active. Please refresh to view the latest status.");
+        setStatusError(
+          "This invitation is no longer active. Please refresh to view the latest status.",
+        );
       } else {
-        setStatusError(backendMessage || (action === "accept" ? "Unable to accept this invitation. Please try again." : "Unable to decline this invitation. Please try again."));
+        setStatusError(
+          backendMessage ||
+            (action === "accept"
+              ? "Unable to accept this invitation. Please try again."
+              : "Unable to decline this invitation. Please try again."),
+        );
       }
       setPendingAction(null);
     }
@@ -112,8 +141,18 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
     if (!value || (Array.isArray(value) && value.length === 0)) return null;
     return (
       <div>
-        <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>{label}</div>
-        <p style={{ margin: "8px 0 0", whiteSpace: "pre-wrap", color: "var(--ink)" }}>{value}</p>
+        <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+          {label}
+        </div>
+        <p
+          style={{
+            margin: "8px 0 0",
+            whiteSpace: "pre-wrap",
+            color: "var(--ink)",
+          }}
+        >
+          {value}
+        </p>
       </div>
     );
   };
@@ -157,7 +196,14 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
           }}
         >
           <div>
-            <div style={{ color: "var(--muted)", fontSize: "0.8rem", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            <div
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.8rem",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+              }}
+            >
               Invitation Details
             </div>
             <h2 style={{ margin: "8px 0 0" }}>{idea.title}</h2>
@@ -179,14 +225,33 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
           </button>
         </div>
 
-        <div style={{ padding: "var(--space-lg)", display: "grid", gap: "var(--space-lg)" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", alignItems: "center" }}>
-            <Badge variant={invitation?.status === "Pending" ? "accent" : "neutral"}>{invitation?.status || "Pending"}</Badge>
+        <div
+          style={{
+            padding: "var(--space-lg)",
+            display: "grid",
+            gap: "var(--space-lg)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "var(--space-sm)",
+              alignItems: "center",
+            }}
+          >
+            <Badge
+              variant={invitation?.status === "Pending" ? "accent" : "neutral"}
+            >
+              {invitation?.status || "Pending"}
+            </Badge>
             {score !== null && <Badge variant="accent">Match {score}%</Badge>}
           </div>
 
           <section>
-            <h3 style={{ margin: "0 0 var(--space-md)" }}>Project Invitation</h3>
+            <h3 style={{ margin: "0 0 var(--space-md)" }}>
+              Project Invitation
+            </h3>
             {renderField("About the Project", idea.description)}
             {renderField("Problem", idea.problem)}
             {renderField("Solution", idea.solution)}
@@ -194,73 +259,132 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
           </section>
 
           <section>
-            <h3 style={{ margin: "0 0 var(--space-md)" }}>Invitation from Founder</h3>
+            <h3 style={{ margin: "0 0 var(--space-md)" }}>
+              Invitation from Founder
+            </h3>
             <div style={{ display: "grid", gap: "var(--space-md)" }}>
               <div>
-                <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Founder</div>
+                <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                  Founder
+                </div>
                 <div>{invitation?.fromFounder?.name || "Founder"}</div>
               </div>
 
               <div>
-                <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Role</div>
+                <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                  Role
+                </div>
                 <div>{invitation?.role || "Role unspecified"}</div>
               </div>
 
               <div>
-                <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Message from Founder</div>
-                <p style={{ margin: "8px 0 0", whiteSpace: "pre-wrap", color: "var(--ink)" }}>
+                <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                  Message from Founder
+                </div>
+                <p
+                  style={{
+                    margin: "8px 0 0",
+                    whiteSpace: "pre-wrap",
+                    color: "var(--ink)",
+                  }}
+                >
                   {invitation?.message || "No invitation message provided."}
                 </p>
               </div>
 
               <div>
-                <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Date received</div>
+                <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                  Date received
+                </div>
                 <div>{formatDate(invitation?.createdAt)}</div>
               </div>
             </div>
           </section>
 
-          {(matchedSkills.length > 0 || missingSkills.length > 0 || niceToHaveSkills.length > 0 || score !== null || roleContext) && (
+          {(matchedSkills.length > 0 ||
+            missingSkills.length > 0 ||
+            niceToHaveSkills.length > 0 ||
+            score !== null ||
+            roleContext) && (
             <section>
-              <h3 style={{ margin: "0 0 var(--space-md)" }}>Why You Were Matched</h3>
+              <h3 style={{ margin: "0 0 var(--space-md)" }}>
+                Why You Were Matched
+              </h3>
               <div style={{ display: "grid", gap: "var(--space-md)" }}>
                 {score !== null && (
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Match score</div>
+                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                      Match score
+                    </div>
                     <div>{score}%</div>
                   </div>
                 )}
 
                 {roleContext && (
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Role context</div>
+                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                      Role context
+                    </div>
                     <div>{roleContext}</div>
                   </div>
                 )}
 
                 {matchedSkills.length > 0 && (
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Matched skills</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", marginTop: "8px" }}>
-                      {matchedSkills.map((skill) => <Badge key={skill}>{skill}</Badge>)}
+                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                      Matched skills
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "var(--space-sm)",
+                        marginTop: "8px",
+                      }}
+                    >
+                      {matchedSkills.map((skill) => (
+                        <Badge key={skill}>{skill}</Badge>
+                      ))}
                     </div>
                   </div>
                 )}
 
                 {missingSkills.length > 0 && (
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Missing skills</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", marginTop: "8px" }}>
-                      {missingSkills.map((skill) => <Badge key={skill}>{skill}</Badge>)}
+                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                      Missing skills
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "var(--space-sm)",
+                        marginTop: "8px",
+                      }}
+                    >
+                      {missingSkills.map((skill) => (
+                        <Badge key={skill}>{skill}</Badge>
+                      ))}
                     </div>
                   </div>
                 )}
 
                 {niceToHaveSkills.length > 0 && (
                   <div>
-                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Nice to have</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", marginTop: "8px" }}>
-                      {niceToHaveSkills.map((skill) => <Badge key={skill}>{skill}</Badge>)}
+                    <div style={{ color: "var(--muted)", fontSize: "0.82rem" }}>
+                      Nice to have
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "var(--space-sm)",
+                        marginTop: "8px",
+                      }}
+                    >
+                      {niceToHaveSkills.map((skill) => (
+                        <Badge key={skill}>{skill}</Badge>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -268,24 +392,51 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
             </section>
           )}
 
-          {ideaLoading && <div style={{ color: "var(--muted)" }}>Loading project details…</div>}
+          {ideaLoading && (
+            <div style={{ color: "var(--muted)" }}>
+              Loading project details…
+            </div>
+          )}
 
           {statusError && (
-            <div style={{ color: "var(--danger)", fontWeight: 600 }}>{statusError}</div>
+            <div style={{ color: "var(--danger)", fontWeight: 600 }}>
+              {statusError}
+            </div>
           )}
 
           {confirmAction && (
-            <div style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-md)", padding: "var(--space-md)" }}>
+            <div
+              style={{
+                border: "1px solid var(--line)",
+                borderRadius: "var(--radius-md)",
+                padding: "var(--space-md)",
+              }}
+            >
               <h4 style={{ margin: "0 0 var(--space-sm)" }}>
-                {confirmAction === "accept" ? "Accept Invitation?" : "Decline Invitation?"}
+                {confirmAction === "accept"
+                  ? "Accept Invitation?"
+                  : "Decline Invitation?"}
               </h4>
-              <p style={{ margin: "0 0 var(--space-md)", color: "var(--muted)" }}>
+              <p
+                style={{ margin: "0 0 var(--space-md)", color: "var(--muted)" }}
+              >
                 {confirmAction === "accept"
                   ? `You are about to join ${idea.title} as ${invitation?.role || "this role"}.`
                   : "Are you sure you want to decline this invitation?"}
               </p>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-                <Button variant="secondary" onClick={() => setConfirmAction(null)} disabled={actionInFlight}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "var(--space-sm)",
+                  flexWrap: "wrap",
+                }}
+              >
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmAction(null)}
+                  disabled={actionInFlight}
+                >
                   Cancel
                 </Button>
                 <Button
@@ -305,11 +456,25 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
           )}
 
           {!confirmAction && canAct && (
-            <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", justifyContent: "flex-end" }}>
-              <Button variant="secondary" onClick={() => setConfirmAction("decline")} disabled={actionInFlight}>
+            <div
+              style={{
+                display: "flex",
+                gap: "var(--space-sm)",
+                flexWrap: "wrap",
+                justifyContent: "flex-end",
+              }}
+            >
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmAction("decline")}
+                disabled={actionInFlight}
+              >
                 Decline
               </Button>
-              <Button onClick={() => setConfirmAction("accept")} disabled={actionInFlight}>
+              <Button
+                onClick={() => setConfirmAction("accept")}
+                disabled={actionInFlight}
+              >
                 Accept Invitation
               </Button>
             </div>
