@@ -36,6 +36,9 @@ const createTeam = async (req, res) => {
     if (!founder) {
       return res.status(401).json({ success: false, message: 'User profile not found', code: 'USER_NOT_FOUND' });
     }
+    if (founder.profileType !== 'founder') {
+      return res.status(403).json({ success: false, message: 'Only founders can create teams', code: 'FOUNDER_REQUIRED' });
+    }
 
     const idea = await Idea.findById(ideaId).lean();
     if (!idea) {
@@ -51,70 +54,20 @@ const createTeam = async (req, res) => {
       return res.status(409).json({ success: false, message: 'A team already exists for this idea', code: 'TEAM_EXISTS' });
     }
 
-    const session = await mongoose.startSession();
-    try {
-      let createdTeam = null;
-      await session.withTransaction(async () => {
-        const acceptedInvitations = await Invitation.find({
-          ideaId,
-          status: 'Accepted',
-          teamId: { $exists: false },
-        })
-          .sort({ createdAt: 1 })
-          .session(session)
-          .lean();
+    const createdTeam = await Team.create({
+      ideaId,
+      founderId: founder._id,
+      name: trimmedName,
+      members: [],
+      status: 'Active',
+    });
 
-        if (!acceptedInvitations.length) {
-          const err = new Error('No accepted invitations available for team formation');
-          err.code = 'NO_ACCEPTED_INVITATIONS';
-          throw err;
-        }
-
-        createdTeam = await Team.create([
-          {
-            ideaId,
-            founderId: founder._id,
-            name: trimmedName,
-            members: acceptedInvitations.map((invitation) => ({
-              userId: invitation.toCandidate,
-              role: invitation.role,
-              invitationId: invitation._id,
-              joinedAt: new Date(),
-            })),
-            status: 'Active',
-          },
-        ], { session });
-
-        for (const invitation of acceptedInvitations) {
-          await Invitation.updateOne(
-            { _id: invitation._id, status: 'Accepted', teamId: { $exists: false } },
-            { $set: { teamId: createdTeam[0]._id } },
-            { session },
-          );
-        }
-      });
-
-      const teamDetail = await populateAuthorizedTeam(createdTeam[0]);
-      return res.status(201).json({ success: true, team: teamDetail });
-    } catch (error) {
-      if (error.code === 11000 || error.message === 'No accepted invitations available for team formation' || error.code === 'NO_ACCEPTED_INVITATIONS') {
-        const statusCode = error.code === 'NO_ACCEPTED_INVITATIONS' ? 409 : 409;
-        return res.status(statusCode).json({
-          success: false,
-          message: error.code === 'NO_ACCEPTED_INVITATIONS' ? 'At least one accepted invitation is required to form a team' : 'A team already exists for this idea',
-          code: error.code === 'NO_ACCEPTED_INVITATIONS' ? 'NO_ACCEPTED_INVITATIONS' : 'TEAM_EXISTS',
-        });
-      }
-
-      if (error.code === 11000) {
-        return res.status(409).json({ success: false, message: 'A team already exists for this idea', code: 'TEAM_EXISTS' });
-      }
-
-      throw error;
-    } finally {
-      await session.endSession();
-    }
+    const teamDetail = await populateAuthorizedTeam(createdTeam);
+    return res.status(201).json({ success: true, team: teamDetail });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, message: 'A team already exists for this idea', code: 'TEAM_EXISTS' });
+    }
     console.error('[ERROR] POST /teams:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to form team', code: 'TEAM_CREATE_FAILED' });
   }
@@ -136,6 +89,9 @@ const addTeamMember = async (req, res) => {
     const founder = await getAuthenticatedUser(req);
     if (!founder) {
       return res.status(401).json({ success: false, message: 'User profile not found', code: 'USER_NOT_FOUND' });
+    }
+    if (founder.profileType !== 'founder') {
+      return res.status(403).json({ success: false, message: 'Only founders can manage team membership', code: 'FOUNDER_REQUIRED' });
     }
 
     const team = await Team.findById(teamId).lean();
@@ -160,19 +116,32 @@ const addTeamMember = async (req, res) => {
     if (!candidate) {
       return res.status(404).json({ success: false, message: 'Candidate not found', code: 'CANDIDATE_NOT_FOUND' });
     }
+    if (candidate.profileType !== 'candidate') {
+      return res.status(409).json({ success: false, message: 'Only candidate profiles can be added to a team', code: 'INVALID_MEMBER' });
+    }
 
     const acceptedInvitation = await Invitation.findOne({
       ideaId: team.ideaId,
+      fromFounder: team.founderId,
       toCandidate: candidateId,
       status: 'Accepted',
+      $or: [
+        { teamId: { $exists: false } },
+        { teamId: null },
+        { teamId: team._id },
+      ],
     }).sort({ createdAt: -1 }).lean();
 
     if (!acceptedInvitation) {
       return res.status(409).json({ success: false, message: 'Only accepted invitations can be added to a team', code: 'INVITATION_NOT_ACCEPTED' });
     }
 
-    const updatedTeam = await Team.findByIdAndUpdate(
-      teamId,
+    const updatedTeam = await Team.findOneAndUpdate(
+      {
+        _id: teamId,
+        founderId: founder._id,
+        'members.userId': { $ne: candidateId },
+      },
       {
         $push: {
           members: {
@@ -189,8 +158,20 @@ const addTeamMember = async (req, res) => {
       .populate('members.userId', 'name profileImage college location skills targetRoles domainInterests availability workPreference hoursPerWeek')
       .lean();
 
+    if (!updatedTeam) {
+      return res.status(409).json({ success: false, message: 'Candidate is already a team member', code: 'ALREADY_TEAM_MEMBER' });
+    }
+
     await Invitation.updateOne(
-      { _id: acceptedInvitation._id },
+      {
+        _id: acceptedInvitation._id,
+        status: 'Accepted',
+        $or: [
+          { teamId: { $exists: false } },
+          { teamId: null },
+          { teamId: team._id },
+        ],
+      },
       { $set: { teamId: teamId } },
     );
 

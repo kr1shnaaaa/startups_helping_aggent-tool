@@ -92,9 +92,17 @@ const CandidateTeamPage = () => {
 
   return (
     <AppLayout>
-      <div style={{ padding: "var(--space-lg)", maxWidth: "1200px", margin: "0 auto" }}>
+      <div
+        style={{
+          padding: "var(--space-lg)",
+          maxWidth: "1200px",
+          margin: "0 auto",
+        }}
+      >
         <div style={{ marginBottom: "var(--space-lg)" }}>
-          <h1 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.7rem)" }}>My Team</h1>
+          <h1 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 2.7rem)" }}>
+            My Team
+          </h1>
           <p style={{ margin: "8px 0 0", color: "var(--muted)" }}>
             Review the startups and team memberships you are part of.
           </p>
@@ -118,7 +126,8 @@ const CandidateTeamPage = () => {
           <Card>
             <h3 style={{ marginTop: 0 }}>You are not part of any team yet.</h3>
             <p style={{ marginBottom: 0 }}>
-              Accepted invitations will appear here once you are added to a team.
+              Accepted invitations will appear here once you are added to a
+              team.
             </p>
           </Card>
         )}
@@ -137,7 +146,9 @@ const CandidateTeamPage = () => {
                   ? team.founderId.name || "Founder"
                   : "Founder";
               const ideaTitle = team?.ideaTitle || team?.name || "Startup team";
-              const memberList = Array.isArray(team?.members) ? team.members : [];
+              const memberList = Array.isArray(team?.members)
+                ? team.members
+                : [];
 
               return (
                 <Card key={team?._id || team?.name || Math.random().toString()}>
@@ -161,18 +172,32 @@ const CandidateTeamPage = () => {
                       >
                         Team
                       </div>
-                      <h3 style={{ margin: "6px 0 0" }}>{team?.name || "Startup team"}</h3>
+                      <h3 style={{ margin: "6px 0 0" }}>
+                        {team?.name || "Startup team"}
+                      </h3>
                     </div>
-                    <Badge variant={team?.status === "Active" ? "accent" : "neutral"}>
+                    <Badge
+                      variant={team?.status === "Active" ? "accent" : "neutral"}
+                    >
                       {team?.status || "Active"}
                     </Badge>
                   </div>
 
-                  <div style={{ marginBottom: "var(--space-md)", color: "var(--muted)" }}>
+                  <div
+                    style={{
+                      marginBottom: "var(--space-md)",
+                      color: "var(--muted)",
+                    }}
+                  >
                     <strong>Idea:</strong> {ideaTitle}
                   </div>
 
-                  <div style={{ marginBottom: "var(--space-md)", color: "var(--muted)" }}>
+                  <div
+                    style={{
+                      marginBottom: "var(--space-md)",
+                      color: "var(--muted)",
+                    }}
+                  >
                     <strong>Founder:</strong> {founder}
                   </div>
 
@@ -190,14 +215,21 @@ const CandidateTeamPage = () => {
                     </div>
                     <div style={{ display: "grid", gap: "var(--space-sm)" }}>
                       {memberList.length === 0 ? (
-                        <p style={{ margin: 0, color: "var(--muted)" }}>No members listed yet.</p>
+                        <p style={{ margin: 0, color: "var(--muted)" }}>
+                          No members listed yet.
+                        </p>
                       ) : (
                         memberList.map((member, index) => {
                           const memberUser =
-                            typeof member?.userId === "object" && member.userId ? member.userId : {};
-                          const memberName = memberUser.name || `Member ${index + 1}`;
+                            typeof member?.userId === "object" && member.userId
+                              ? member.userId
+                              : {};
+                          const memberName =
+                            memberUser.name || `Member ${index + 1}`;
                           const memberRole = member?.role || "Team member";
-                          const isCurrentUser = String(memberUser._id || member?.userId) === currentUserId;
+                          const isCurrentUser =
+                            String(memberUser._id || member?.userId) ===
+                            currentUserId;
 
                           return (
                             <div
@@ -212,9 +244,21 @@ const CandidateTeamPage = () => {
                                 {memberName}
                                 {isCurrentUser && " (You)"}
                               </div>
-                              <div style={{ color: "var(--muted)", marginTop: "4px" }}>{memberRole}</div>
+                              <div
+                                style={{
+                                  color: "var(--muted)",
+                                  marginTop: "4px",
+                                }}
+                              >
+                                {memberRole}
+                              </div>
                               {member?.joinedAt && (
-                                <div style={{ color: "var(--muted)", marginTop: "4px" }}>
+                                <div
+                                  style={{
+                                    color: "var(--muted)",
+                                    marginTop: "4px",
+                                  }}
+                                >
                                   Joined: {formatDate(member.joinedAt)}
                                 </div>
                               )}

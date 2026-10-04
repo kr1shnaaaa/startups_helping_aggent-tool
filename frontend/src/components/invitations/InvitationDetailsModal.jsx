@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Badge from "../common/Badge";
 import Button from "../common/Button";
+import { useAuth } from "../../hooks/useAuth";
 import {
   acceptInvitation,
   declineInvitation,
   getIdeaById,
+  withdrawInvitation,
 } from "../../services/matchingApi";
 
 const formatDate = (value) => {
@@ -21,6 +23,7 @@ const formatDate = (value) => {
 };
 
 const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
+  const { profile, profileType } = useAuth();
   const [projectDetails, setProjectDetails] = useState(null);
   const [ideaLoading, setIdeaLoading] = useState(false);
   const [statusError, setStatusError] = useState("");
@@ -92,8 +95,30 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
     };
   }, [invitation, projectDetails]);
 
+  const currentUserId = profile?._id ? String(profile._id) : "";
+  const currentUserMatchesFounder = Boolean(
+    currentUserId &&
+      String(invitation?.fromFounder?._id || invitation?.fromFounder) ===
+        currentUserId,
+  );
+  const currentUserMatchesCandidate = Boolean(
+    currentUserId &&
+      String(invitation?.toCandidate?._id || invitation?.toCandidate) ===
+        currentUserId,
+  );
+  const inferredFounderSender =
+    profileType === "founder" && Boolean(invitation?._id);
+  const inferredCandidateRecipient =
+    profileType === "candidate" && Boolean(invitation?._id);
+
+  const isFounderSender = currentUserMatchesFounder || inferredFounderSender;
+  const isCandidateRecipient =
+    currentUserMatchesCandidate || inferredCandidateRecipient;
+
   const actionInFlight = pendingAction !== null;
-  const canAct = invitation?.status === "Pending";
+  const canWithdraw = invitation?.status === "Pending" && isFounderSender;
+  const canRespond =
+    invitation?.status === "Pending" && !isFounderSender && isCandidateRecipient;
 
   if (!invitation) return null;
 
@@ -107,12 +132,18 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
       const response =
         action === "accept"
           ? await acceptInvitation(invitation._id)
-          : await declineInvitation(invitation._id);
-      const updatedInvitation = response?.invitation ||
-        response || {
-          ...invitation,
-          status: action === "accept" ? "Accepted" : "Declined",
-        };
+          : action === "decline"
+            ? await declineInvitation(invitation._id)
+            : await withdrawInvitation(invitation._id);
+      const updatedInvitation = response?.invitation || response || {
+        ...invitation,
+        status:
+          action === "accept"
+            ? "Accepted"
+            : action === "decline"
+              ? "Declined"
+              : "Withdrawn",
+      };
       onStatusChange?.(updatedInvitation);
       setPendingAction(null);
     } catch (error) {
@@ -130,7 +161,9 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
           backendMessage ||
             (action === "accept"
               ? "Unable to accept this invitation. Please try again."
-              : "Unable to decline this invitation. Please try again."),
+              : action === "decline"
+                ? "Unable to decline this invitation. Please try again."
+                : "Unable to withdraw this invitation. Please try again."),
         );
       }
       setPendingAction(null);
@@ -415,14 +448,18 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
               <h4 style={{ margin: "0 0 var(--space-sm)" }}>
                 {confirmAction === "accept"
                   ? "Accept Invitation?"
-                  : "Decline Invitation?"}
+                  : confirmAction === "decline"
+                    ? "Decline Invitation?"
+                    : "Withdraw Invitation?"}
               </h4>
               <p
                 style={{ margin: "0 0 var(--space-md)", color: "var(--muted)" }}
               >
                 {confirmAction === "accept"
                   ? `You are about to join ${idea.title} as ${invitation?.role || "this role"}.`
-                  : "Are you sure you want to decline this invitation?"}
+                  : confirmAction === "decline"
+                    ? "Are you sure you want to decline this invitation?"
+                    : `This invitation will be marked as withdrawn and remain in your history.`}
               </p>
               <div
                 style={{
@@ -446,16 +483,20 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
                   {actionInFlight && pendingAction === confirmAction
                     ? confirmAction === "accept"
                       ? "Accepting..."
-                      : "Declining..."
+                      : confirmAction === "decline"
+                        ? "Declining..."
+                        : "Withdrawing..."
                     : confirmAction === "accept"
                       ? "Accept Invitation"
-                      : "Decline Invitation"}
+                      : confirmAction === "decline"
+                        ? "Decline Invitation"
+                        : "Withdraw Invitation"}
                 </Button>
               </div>
             </div>
           )}
 
-          {!confirmAction && canAct && (
+          {!confirmAction && (canWithdraw || canRespond) && (
             <div
               style={{
                 display: "flex",
@@ -464,19 +505,31 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
                 justifyContent: "flex-end",
               }}
             >
-              <Button
-                variant="secondary"
-                onClick={() => setConfirmAction("decline")}
-                disabled={actionInFlight}
-              >
-                Decline
-              </Button>
-              <Button
-                onClick={() => setConfirmAction("accept")}
-                disabled={actionInFlight}
-              >
-                Accept Invitation
-              </Button>
+              {canWithdraw ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmAction("withdraw")}
+                  disabled={actionInFlight}
+                >
+                  Withdraw Invitation
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setConfirmAction("decline")}
+                    disabled={actionInFlight}
+                  >
+                    Decline
+                  </Button>
+                  <Button
+                    onClick={() => setConfirmAction("accept")}
+                    disabled={actionInFlight}
+                  >
+                    Accept Invitation
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </div>

@@ -88,10 +88,7 @@ const AppRoutes = () => (
           />
         }
       />
-      <Route
-        path="/app/team"
-        element={<CandidateTeamPage />}
-      />
+      <Route path="/app/team" element={<CandidateTeamPage />} />
       <Route path="/app/founder-team" element={<FounderTeamPage />} />
       <Route path="/app/invitations" element={<CandidateInvitationsPage />} />
       <Route

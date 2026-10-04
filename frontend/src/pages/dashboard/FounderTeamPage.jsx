@@ -4,19 +4,24 @@ import Badge from "../../components/common/Badge";
 import Button from "../../components/common/Button";
 import Card from "../../components/common/Card";
 import { useAuth } from "../../hooks/useAuth";
+import { getMyIdeas } from "../../services/ideaApi";
 import {
   addTeamMember,
-  getIdeaById,
+  createTeam,
   listInvitations,
   listTeams,
 } from "../../services/matchingApi";
 
-const normalizeList = (payload) => {
+const normalizeList = (payload, key) => {
   if (Array.isArray(payload)) return payload;
-  if (payload && Array.isArray(payload.invitations)) return payload.invitations;
-  if (payload && Array.isArray(payload.teams)) return payload.teams;
+  if (payload && Array.isArray(payload[key])) return payload[key];
   if (payload && Array.isArray(payload.data)) return payload.data;
   return [];
+};
+
+const getId = (value) => {
+  if (!value) return "";
+  return String(typeof value === "object" ? value._id || "" : value);
 };
 
 const formatDate = (value) => {
@@ -32,116 +37,160 @@ const formatDate = (value) => {
 
 const FounderTeamPage = () => {
   const { profile } = useAuth();
+  const [ideas, setIdeas] = useState([]);
   const [teams, setTeams] = useState([]);
   const [acceptedInvitations, setAcceptedInvitations] = useState([]);
-  const [ideaTitles, setIdeaTitles] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pendingIdeaId, setPendingIdeaId] = useState(null);
   const [pendingCandidateId, setPendingCandidateId] = useState(null);
   const [confirmation, setConfirmation] = useState(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const [teamResponse, invitationResponse] = await Promise.all([
+  const fetchData = useCallback(async () => {
+    const [ideaResponse, teamResponse, invitationResponse] = await Promise.all([
+        getMyIdeas(),
         listTeams(),
         listInvitations("sent", "Accepted"),
       ]);
+    return {
+      ideas: normalizeList(ideaResponse, "ideas"),
+      teams: normalizeList(teamResponse, "teams"),
+      invitations: normalizeList(invitationResponse, "invitations"),
+    };
+  }, []);
 
-      const nextTeams = normalizeList(teamResponse);
-      const nextInvitations = normalizeList(invitationResponse);
-      setTeams(nextTeams);
-      setAcceptedInvitations(nextInvitations);
+  const applyData = useCallback(({ ideas: nextIdeas, teams: nextTeams, invitations }) => {
+    setIdeas(nextIdeas);
+    setTeams(nextTeams);
+    setAcceptedInvitations(invitations);
+  }, []);
 
-      const uniqueIdeaIds = Array.from(
-        new Set(
-          [...nextTeams.map((team) => team?.ideaId?._id || team?.ideaId), ...nextInvitations.map((invitation) => invitation?.ideaId?._id || invitation?.ideaId)],
-        ).filter(Boolean),
-      );
-
-      const titles = {};
-      await Promise.all(
-        uniqueIdeaIds.map(async (ideaId) => {
-          try {
-            const result = await getIdeaById(ideaId);
-            const idea = result?.idea || result;
-            titles[ideaId] = idea?.title || "Startup idea";
-          } catch {
-            titles[ideaId] = "Startup idea";
-          }
-        }),
-      );
-
-      setIdeaTitles(titles);
-    } catch (requestError) {
-      const status = requestError?.status || requestError?.response?.status;
-      if (status === 401) {
-        setError("Your session has expired. Please sign in again.");
-      } else {
-        setError("Unable to load your team and accepted candidates.");
-      }
-    } finally {
-      setLoading(false);
-    }
+  const applyLoadError = useCallback((requestError) => {
+    const status = requestError?.status || requestError?.response?.status;
+    setError(
+      status === 401
+        ? "Your session has expired. Please sign in again."
+        : "Unable to load your team and accepted candidates.",
+    );
   }, []);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    let active = true;
+    fetchData()
+      .then((data) => {
+        if (active) applyData(data);
+      })
+      .catch((requestError) => {
+        if (active) applyLoadError(requestError);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [applyData, applyLoadError, fetchData]);
+
+  const handleRetry = () => {
+    setLoading(true);
+    setError("");
+    fetchData()
+      .then(applyData)
+      .catch(applyLoadError)
+      .finally(() => setLoading(false));
+  };
 
   const teamLookup = useMemo(() => {
     const map = {};
     teams.forEach((team) => {
-      const ideaId = team?.ideaId?._id || team?.ideaId;
-      if (ideaId) map[String(ideaId)] = team;
+      const ideaId = getId(team?.ideaId);
+      if (ideaId) map[ideaId] = team;
     });
     return map;
   }, [teams]);
 
-  const handleAddMember = async (invitation) => {
-    const ideaId = invitation?.ideaId?._id || invitation?.ideaId;
-    const team = teamLookup[String(ideaId)];
-    const candidateId = invitation?.toCandidate?._id || invitation?.toCandidate;
+  const handleCreateTeam = async (idea) => {
+    const ideaId = getId(idea?._id);
+    const teamName = idea?.enhanced?.title || idea?.title || "Startup Team";
+    if (!ideaId) return;
 
-    if (!team || !team._id) {
-      setError("Create a team for this idea before adding candidates.");
-      return;
+    setPendingIdeaId(ideaId);
+    setError("");
+    try {
+      const response = await createTeam(ideaId, teamName);
+      const createdTeam = response?.team;
+      if (!createdTeam?._id) {
+        throw new Error("The server did not return the created team.");
+      }
+      setTeams((current) => [
+        ...current.filter((team) => getId(team?.ideaId) !== ideaId),
+        createdTeam,
+      ]);
+    } catch (requestError) {
+      setError(
+        requestError?.response?.data?.message ||
+          requestError?.message ||
+          "Unable to create a team for this idea.",
+      );
+    } finally {
+      setPendingIdeaId(null);
     }
+  };
 
-    if (!candidateId) {
-      setError("Candidate details are unavailable for this invitation.");
-      return;
-    }
+  const handleAddMember = (idea, invitation) => {
+    const ideaId = getId(idea?._id);
+    const candidateId = getId(invitation?.toCandidate);
+    const team = teamLookup[ideaId];
+    if (!team?._id || !candidateId) return;
 
-    setPendingCandidateId(candidateId);
     setConfirmation({
-      candidateName: invitation?.toCandidate?.name || "this candidate",
-      role: invitation?.role || "Team member",
-      ideaTitle: ideaTitles[String(ideaId)] || "this idea",
+      ideaId,
       teamId: team._id,
       candidateId,
+      candidateName:
+        typeof invitation.toCandidate === "object"
+          ? invitation.toCandidate.name || "this candidate"
+          : "this candidate",
+      role: invitation.role || "Team member",
+      ideaTitle: idea?.enhanced?.title || idea?.title || "this idea",
     });
   };
 
   const confirmAddMember = async () => {
     if (!confirmation) return;
     setPendingCandidateId(confirmation.candidateId);
+    setError("");
     try {
-      await addTeamMember(confirmation.teamId, confirmation.candidateId);
-      setConfirmation(null);
-      await loadData();
-    } catch (requestError) {
-      const status = requestError?.status || requestError?.response?.status;
-      const message = requestError?.response?.data?.message || requestError?.message || "Unable to add this candidate to the team.";
-      if (status === 409) {
-        setError(message);
-      } else if (status === 403) {
-        setError("Only the team founder can add members.");
-      } else {
-        setError(message);
+      const response = await addTeamMember(
+        confirmation.teamId,
+        confirmation.candidateId,
+      );
+      const updatedTeam = response?.team;
+      if (!updatedTeam?._id) {
+        throw new Error("The server did not return the updated team.");
       }
+      setTeams((current) =>
+        current.map((team) =>
+          getId(team?.ideaId) === confirmation.ideaId ? updatedTeam : team,
+        ),
+      );
+      setAcceptedInvitations((current) =>
+        current.filter(
+          (invitation) =>
+            !(
+              getId(invitation?.ideaId) === confirmation.ideaId &&
+              getId(invitation?.toCandidate) === confirmation.candidateId
+            ),
+        ),
+      );
+      setConfirmation(null);
+    } catch (requestError) {
+      setError(
+        requestError?.response?.data?.message ||
+          requestError?.message ||
+          "Unable to add this candidate to the team.",
+      );
     } finally {
       setPendingCandidateId(null);
     }
@@ -149,17 +198,23 @@ const FounderTeamPage = () => {
 
   return (
     <AppLayout>
-      <div style={{ padding: "var(--space-lg)", maxWidth: "1200px", margin: "0 auto" }}>
+      <div
+        style={{
+          padding: "var(--space-lg)",
+          maxWidth: "1200px",
+          margin: "0 auto",
+        }}
+      >
         <div style={{ marginBottom: "var(--space-lg)" }}>
           <h1 style={{ margin: 0 }}>My Team</h1>
           <p style={{ margin: "8px 0 0", color: "var(--muted)" }}>
-            Review accepted candidates and add them to your team.
+            Create teams for your ideas and add candidates who accepted your invitations.
           </p>
         </div>
 
         {loading && (
           <Card>
-            <p style={{ margin: 0 }}>Loading your team and accepted candidates...</p>
+            <p style={{ margin: 0 }}>Loading your ideas and teams...</p>
           </Card>
         )}
 
@@ -167,116 +222,212 @@ const FounderTeamPage = () => {
           <Card>
             <h3 style={{ marginTop: 0 }}>Unable to load your team.</h3>
             <p>{error}</p>
-            <Button onClick={loadData}>Retry</Button>
+            <Button onClick={handleRetry}>Retry</Button>
           </Card>
         )}
 
-        {!loading && !error && (
-          <>
-            {teams.length > 0 && (
-              <div style={{ display: "grid", gap: "var(--space-md)", marginBottom: "var(--space-lg)" }}>
-                {teams.map((team) => {
-                  const memberList = Array.isArray(team?.members) ? team.members : [];
-                  const ideaId = team?.ideaId?._id || team?.ideaId;
-                  const ideaTitle = ideaTitles[String(ideaId)] || team?.name || "Startup team";
-                  const founderName = team?.founderId?.name || profile?.name || "Founder";
+        {!loading && !error && ideas.length === 0 && (
+          <Card>
+            <h3 style={{ marginTop: 0 }}>No startup ideas yet.</h3>
+            <p style={{ marginBottom: 0 }}>
+              Create an idea before forming a team.
+            </p>
+          </Card>
+        )}
 
-                  return (
-                    <Card key={team?._id || team?.name || "team-card"}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
-                        <div>
-                          <div style={{ color: "var(--muted)", fontSize: "0.8rem", letterSpacing: "0.08em", textTransform: "uppercase" }}>Team</div>
-                          <h3 style={{ margin: "6px 0 0" }}>{team?.name || "Startup team"}</h3>
-                        </div>
-                        <Badge variant="accent">{team?.status || "Active"}</Badge>
-                      </div>
+        {!loading && !error && ideas.length > 0 && (
+          <div style={{ display: "grid", gap: "var(--space-lg)" }}>
+            {ideas.map((idea) => {
+              const ideaId = getId(idea?._id);
+              const ideaTitle =
+                idea?.enhanced?.title || idea?.title || "Startup idea";
+              const team = teamLookup[ideaId];
+              const memberList = Array.isArray(team?.members)
+                ? team.members
+                : [];
+              const teamMemberIds = new Set(
+                memberList.map((member) => getId(member?.userId)),
+              );
+              const waitingCandidates = acceptedInvitations.filter(
+                (invitation) =>
+                  getId(invitation?.ideaId) === ideaId &&
+                  !teamMemberIds.has(getId(invitation?.toCandidate)),
+              );
+              const founder =
+                typeof team?.founderId === "object" && team.founderId
+                  ? team.founderId
+                  : profile || {};
 
-                      <div style={{ marginBottom: "var(--space-md)", color: "var(--muted)" }}>
-                        <strong>Idea:</strong> {ideaTitle}
-                      </div>
-
-                      <div style={{ marginBottom: "var(--space-md)", color: "var(--muted)" }}>
-                        <strong>Founder:</strong> {founderName}
-                      </div>
-
-                      <div>
-                        <div style={{ color: "var(--muted)", fontSize: "0.8rem", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: "var(--space-sm)" }}>
-                          Team members
-                        </div>
-
-                        {memberList.length === 0 ? (
-                          <p style={{ margin: 0, color: "var(--muted)" }}>No members listed yet.</p>
-                        ) : (
-                          <div style={{ display: "grid", gap: "var(--space-sm)" }}>
-                            {memberList.map((member, index) => {
-                              const memberUser = member?.userId && typeof member.userId === "object" ? member.userId : {};
-                              const memberName = memberUser.name || `Member ${index + 1}`;
-                              return (
-                                <div key={`${member?.userId?._id || "member"}-${index}`} style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-sm)", padding: "var(--space-sm)" }}>
-                                  <div style={{ fontWeight: 600 }}>{memberName}</div>
-                                  <div style={{ color: "var(--muted)", marginTop: "4px" }}>{member?.role || "Team member"}</div>
-                                  {member?.joinedAt && (
-                                    <div style={{ color: "var(--muted)", marginTop: "4px" }}>Joined: {formatDate(member.joinedAt)}</div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+              return (
+                <section key={ideaId}>
+                  {!team ? (
+                    <Card>
+                      <h2 style={{ margin: "0 0 var(--space-sm)" }}>
+                        {ideaTitle}
+                      </h2>
+                      <h3 style={{ margin: "0 0 var(--space-sm)" }}>
+                        No team has been created yet.
+                      </h3>
+                      <p
+                        style={{
+                          margin: "0 0 var(--space-md)",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        Create a team for this idea to start building your team.
+                      </p>
+                      <Button
+                        onClick={() => handleCreateTeam(idea)}
+                        disabled={pendingIdeaId === ideaId}
+                      >
+                        {pendingIdeaId === ideaId ? "Creating..." : "Create Team"}
+                      </Button>
                     </Card>
-                  );
-                })}
-              </div>
-            )}
-
-            <Card>
-              <h3 style={{ marginTop: 0 }}>Accepted invitations</h3>
-              {acceptedInvitations.length === 0 ? (
-                <p style={{ marginBottom: 0 }}>No accepted candidates are waiting to be added to a team yet.</p>
-              ) : (
-                <div style={{ display: "grid", gap: "var(--space-md)" }}>
-                  {acceptedInvitations.map((invitation) => {
-                    const ideaId = invitation?.ideaId?._id || invitation?.ideaId;
-                    const candidate = invitation?.toCandidate || {};
-                    const team = teamLookup[String(ideaId)];
-                    const isMemberAlready = team?.members?.some((member) => String(member?.userId?._id || member?.userId) === String(candidate?._id || candidate));
-
-                    return (
-                      <div key={invitation?._id} style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-md)", padding: "var(--space-md)", display: "grid", gap: "var(--space-sm)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{candidate?.name || "Candidate"}</div>
-                            <div style={{ color: "var(--muted)" }}>{invitation?.role || "Team role"}</div>
-                          </div>
-                          <Badge variant="accent">Accepted</Badge>
-                        </div>
-                        <div style={{ color: "var(--muted)" }}>
-                          <strong>Idea:</strong> {ideaTitles[String(ideaId)] || "Startup idea"}
-                        </div>
-                        <div style={{ color: "var(--muted)" }}>
-                          <strong>Invitation:</strong> {formatDate(invitation?.createdAt)}
-                        </div>
-                        {isMemberAlready ? (
-                          <Button variant="secondary" disabled>
-                            Already on team
-                          </Button>
-                        ) : team ? (
-                          <Button onClick={() => handleAddMember(invitation)} disabled={pendingCandidateId === (candidate?._id || candidate)}>
-                            {pendingCandidateId === (candidate?._id || candidate) ? "Adding..." : "Add to Team"}
-                          </Button>
-                        ) : (
-                          <Button variant="secondary" disabled>
-                            Create team first
-                          </Button>
-                        )}
+                  ) : (
+                    <Card>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "var(--space-sm)",
+                          marginBottom: "var(--space-md)",
+                        }}
+                      >
+                        <h2 style={{ margin: 0 }}>{team.name}</h2>
+                        <Badge variant="accent">{team.status || "Active"}</Badge>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
-          </>
+                      <p
+                        style={{
+                          margin: "0 0 var(--space-sm)",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        <strong>Idea:</strong> {ideaTitle}
+                      </p>
+                      <h3 style={{ margin: "0 0 var(--space-sm)" }}>
+                        Team Members
+                      </h3>
+                      <div
+                        style={{
+                          border: "1px solid var(--line)",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "var(--space-sm)",
+                          marginBottom: "var(--space-sm)",
+                        }}
+                      >
+                        <div style={{ fontWeight: 600 }}>
+                          {founder.name || "Founder"}
+                        </div>
+                        <div style={{ color: "var(--muted)", marginTop: "4px" }}>
+                          Founder
+                        </div>
+                      </div>
+                      {memberList.length === 0 ? (
+                        <p style={{ color: "var(--muted)" }}>
+                          No candidates have joined yet.
+                        </p>
+                      ) : (
+                        <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+                          {memberList.map((member, index) => {
+                            const memberUser =
+                              typeof member?.userId === "object" && member.userId
+                                ? member.userId
+                                : {};
+                            return (
+                              <div
+                                key={`${getId(member?.userId) || "member"}-${index}`}
+                                style={{
+                                  border: "1px solid var(--line)",
+                                  borderRadius: "var(--radius-sm)",
+                                  padding: "var(--space-sm)",
+                                }}
+                              >
+                                <div style={{ fontWeight: 600 }}>
+                                  {memberUser.name || "Team member"}
+                                </div>
+                                <div
+                                  style={{
+                                    color: "var(--muted)",
+                                    marginTop: "4px",
+                                  }}
+                                >
+                                  {member.role || "Team member"}
+                                </div>
+                                <div
+                                  style={{
+                                    color: "var(--muted)",
+                                    marginTop: "4px",
+                                  }}
+                                >
+                                  Joined: {formatDate(member.joinedAt)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </Card>
+                  )}
+
+                  <Card style={{ marginTop: "var(--space-md)" }}>
+                    <h3 style={{ marginTop: 0 }}>Accepted Candidates</h3>
+                    {waitingCandidates.length === 0 ? (
+                      <p style={{ marginBottom: 0, color: "var(--muted)" }}>
+                        No accepted candidates are waiting to be added to this team.
+                      </p>
+                    ) : (
+                      <div style={{ display: "grid", gap: "var(--space-md)" }}>
+                        {waitingCandidates.map((invitation) => {
+                          const candidate = invitation?.toCandidate || {};
+                          const candidateId = getId(candidate);
+                          return (
+                            <div
+                              key={invitation?._id}
+                              style={{
+                                border: "1px solid var(--line)",
+                                borderRadius: "var(--radius-sm)",
+                                padding: "var(--space-md)",
+                              }}
+                            >
+                              <div style={{ fontWeight: 600 }}>
+                                {candidate?.name || "Candidate"}
+                              </div>
+                              <div style={{ color: "var(--muted)" }}>
+                                {invitation?.role || "Team role"}
+                              </div>
+                              <div
+                                style={{
+                                  color: "var(--muted)",
+                                  margin: "4px 0 var(--space-sm)",
+                                }}
+                              >
+                                Invitation: Accepted
+                              </div>
+                              {team ? (
+                                <Button
+                                  onClick={() => handleAddMember(idea, invitation)}
+                                  disabled={pendingCandidateId === candidateId}
+                                >
+                                  {pendingCandidateId === candidateId
+                                    ? "Adding..."
+                                    : "Add to Team"}
+                                </Button>
+                              ) : (
+                                <Button variant="secondary" disabled>
+                                  Create team first
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Card>
+                </section>
+              );
+            })}
+          </div>
         )}
 
         {confirmation && (
@@ -294,6 +445,8 @@ const FounderTeamPage = () => {
             }}
           >
             <div
+              role="dialog"
+              aria-modal="true"
               onClick={(event) => event.stopPropagation()}
               style={{
                 background: "var(--surface)",
@@ -304,18 +457,39 @@ const FounderTeamPage = () => {
                 padding: "var(--space-lg)",
               }}
             >
-              <h3 style={{ marginTop: 0 }}>Add {confirmation.candidateName} to Team?</h3>
-              <p style={{ margin: "0 0 var(--space-md)", color: "var(--muted)" }}>
+              <h3 style={{ marginTop: 0 }}>
+                Add {confirmation.candidateName} to Team?
+              </h3>
+              <p
+                style={{
+                  margin: "0 0 var(--space-md)",
+                  color: "var(--muted)",
+                }}
+              >
                 Role: {confirmation.role}
                 <br />
                 Project: {confirmation.ideaTitle}
               </p>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-                <Button variant="secondary" onClick={() => setConfirmation(null)}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: "var(--space-sm)",
+                  flexWrap: "wrap",
+                }}
+              >
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmation(null)}
+                  disabled={pendingCandidateId !== null}
+                >
                   Cancel
                 </Button>
-                <Button onClick={confirmAddMember}>
-                  Add to Team
+                <Button
+                  onClick={confirmAddMember}
+                  disabled={pendingCandidateId !== null}
+                >
+                  {pendingCandidateId ? "Adding..." : "Add to Team"}
                 </Button>
               </div>
             </div>

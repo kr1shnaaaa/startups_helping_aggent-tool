@@ -1478,14 +1478,63 @@ _/
 
 ### POST /api/teams/
 
-Purpose: Creates a new team record for a startup idea once accepted invitations are ready to be formed into a team.
+Purpose: Explicitly creates an empty team for an idea owned by the authenticated founder.
 
-Important behavioral note:
+Exact request body:
 
-- This endpoint is not triggered by `PUT /api/invitations/:invitationId/accept`.
-- A founder must create the team explicitly after a candidate accepts an invitation for the relevant idea.
-- The API looks for `Accepted` invitations on that idea that do not yet have a `teamId`, and then creates one team record with the founder and members.
+```json
+{
+  "ideaId": "ObjectId",
+  "name": "Campus Launchpad"
+}
+```
+
+Behavior and validation:
+
+- The authenticated user's profile type must be `founder`, and they must own the idea (`idea.createdBy` must equal `team.founderId`).
+- `name` must contain 2-120 characters after trimming. The frontend defaults it to the idea's existing enhanced title or title.
+- Team creation does not require an accepted invitation and never adds candidates.
+- The team is created with `members: []`; founder identity and ownership are represented by `founderId`, not a member entry.
+- Invitation acceptance does not create a team or team membership.
 - A team is one-per-idea, enforced by the unique `ideaId` index on the `Team` model.
+
+Success response (`201`):
+
+```json
+{
+  "success": true,
+  "team": {
+    "_id": "ObjectId",
+    "name": "Campus Launchpad",
+    "ideaId": "ObjectId",
+    "founderId": { "_id": "ObjectId", "name": "Riya Shah" },
+    "members": [],
+    "status": "Active",
+    "createdAt": "ISO date",
+    "updatedAt": "ISO date"
+  }
+}
+```
+
+Failure statuses: `400` invalid IDs/name, `401` missing user profile, `403 FOUNDER_REQUIRED` or idea is not owned by the founder, `404` idea not found, `409 TEAM_EXISTS` a team already exists for the idea.
+
+### POST /api/teams/:teamId/members
+
+Purpose: Adds one candidate to an existing team using an accepted invitation.
+
+Exact request body:
+
+```json
+{
+  "candidateId": "ObjectId"
+}
+```
+
+The authenticated user must have `profileType: "founder"` and be the team's `founderId`. The candidate must exist, must have `profileType: "candidate"`, must not be the founder or already a member, and must have an `Accepted` invitation from that founder for the same idea. An invitation with no `teamId` or this team's `teamId` is eligible; an invitation assigned elsewhere is not. On success the candidate is stored in `members` with `userId`, invitation `role`, `invitationId`, and `joinedAt`, and the invitation is linked to this team.
+
+Success response (`200`): `{ "success": true, "message": "Candidate added to team", "team": { ... } }`. The returned team populates `founderId` and `members[].userId` with candidate profile fields (`name`, `profileImage`, college, location, and candidate skills/preferences).
+
+Failure statuses: `400` malformed IDs, `401` missing user profile, `403 FORBIDDEN` user is not the team founder, `404` team/candidate not found, `409` candidate is founder/already a member or no matching accepted invitation exists.
 
 ### GET /api/teams/
 
