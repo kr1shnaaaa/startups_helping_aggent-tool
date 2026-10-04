@@ -89,7 +89,10 @@ const BulkInvitationComposer = ({
           `\\b${representativeCandidate.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
           "gi",
         );
-        templatedMessage = templatedMessage.replace(nameRegex, "{candidateName}");
+        templatedMessage = templatedMessage.replace(
+          nameRegex,
+          "{candidateName}",
+        );
       }
       if (!templatedMessage.includes("{candidateName}")) {
         // Ensure {candidateName} placeholder at start if missing
@@ -338,7 +341,8 @@ const BulkInvitationComposer = ({
                 : null;
               return (
                 <Badge key={cand._id || cand.id || idx} variant="accent">
-                  {cand.name || "Candidate"}{score !== null ? ` (${score}%)` : ""}
+                  {cand.name || "Candidate"}
+                  {score !== null ? ` (${score}%)` : ""}
                 </Badge>
               );
             })}
@@ -358,7 +362,9 @@ const BulkInvitationComposer = ({
                 marginBottom: "var(--space-md)",
               }}
             >
-              <h3 style={{ margin: "0 0 var(--space-sm) 0", fontSize: "1.1rem" }}>
+              <h3
+                style={{ margin: "0 0 var(--space-sm) 0", fontSize: "1.1rem" }}
+              >
                 {isAllSuccess
                   ? `All ${successCount} invitations sent successfully!`
                   : `${successCount} invitation${successCount !== 1 ? "s" : ""} sent successfully (${failureCount} issue${failureCount !== 1 ? "s" : ""})`}
@@ -391,7 +397,9 @@ const BulkInvitationComposer = ({
                     <span style={{ fontWeight: 600 }}>{res.candidateName}</span>
                     <span
                       style={{
-                        color: res.success ? "var(--success, #16a34a)" : "var(--danger)",
+                        color: res.success
+                          ? "var(--success, #16a34a)"
+                          : "var(--danger)",
                         display: "flex",
                         alignItems: "center",
                         gap: "4px",
@@ -480,7 +488,8 @@ const BulkInvitationComposer = ({
                   margin: "4px 0 0 0",
                 }}
               >
-                Tip: Use <code>{`{candidateName}`}</code> to automatically personalize the message with each recipient&apos;s name.
+                Tip: Use <code>{`{candidateName}`}</code> to automatically
+                personalize the message with each recipient&apos;s name.
               </p>
             </div>
 
@@ -522,7 +531,11 @@ const BulkInvitationComposer = ({
               </Button>
 
               <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-                <Button variant="secondary" onClick={onClose} disabled={sending}>
+                <Button
+                  variant="secondary"
+                  onClick={onClose}
+                  disabled={sending}
+                >
                   Cancel
                 </Button>
                 <Button

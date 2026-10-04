@@ -36,7 +36,9 @@ describe("CandidateCard Selection", () => {
       />,
     );
 
-    const checkbox = screen.getByRole("checkbox", { name: /Select Alex Rivera/i });
+    const checkbox = screen.getByRole("checkbox", {
+      name: /Select Alex Rivera/i,
+    });
     expect(checkbox).toBeDefined();
     expect(checkbox.checked).toBe(false);
     expect(checkbox.disabled).toBe(false);
@@ -57,7 +59,9 @@ describe("CandidateCard Selection", () => {
       />,
     );
 
-    const checkbox = screen.getByRole("checkbox", { name: /Select Alex Rivera/i });
+    const checkbox = screen.getByRole("checkbox", {
+      name: /Select Alex Rivera/i,
+    });
     expect(checkbox.disabled).toBe(true);
     expect(screen.getByText("Invitation Pending")).toBeDefined();
   });
@@ -75,7 +79,9 @@ describe("CandidateCard Selection", () => {
       />,
     );
 
-    const checkbox = screen.getByRole("checkbox", { name: /Select Alex Rivera/i });
+    const checkbox = screen.getByRole("checkbox", {
+      name: /Select Alex Rivera/i,
+    });
     expect(checkbox.disabled).toBe(false);
     expect(checkbox.checked).toBe(true);
     expect(screen.getByText("Invite Again")).toBeDefined();
@@ -105,17 +111,29 @@ describe("CandidateCard Selection", () => {
 describe("BulkInvitationComposer", () => {
   const selectedCandidates = [
     {
-      candidate: { _id: "cand-1", name: "Alice Smith", skills: [{ name: "React" }] },
+      candidate: {
+        _id: "cand-1",
+        name: "Alice Smith",
+        skills: [{ name: "React" }],
+      },
       match: { score: 92, matchedSkills: ["React"] },
       role: "Frontend Developer",
     },
     {
-      candidate: { _id: "cand-2", name: "Bob Jones", skills: [{ name: "React" }] },
+      candidate: {
+        _id: "cand-2",
+        name: "Bob Jones",
+        skills: [{ name: "React" }],
+      },
       match: { score: 88, matchedSkills: ["React"] },
       role: "Frontend Developer",
     },
     {
-      candidate: { _id: "cand-3", name: "Charlie Day", skills: [{ name: "React" }] },
+      candidate: {
+        _id: "cand-3",
+        name: "Charlie Day",
+        skills: [{ name: "React" }],
+      },
       match: { score: 84, matchedSkills: ["React"] },
       role: "Frontend Developer",
     },
@@ -155,8 +173,12 @@ describe("BulkInvitationComposer", () => {
     const textarea = screen.getByLabelText(/Invitation Message/i);
     expect(textarea.value).toContain("Hi {candidateName}");
 
-    fireEvent.change(textarea, { target: { value: "Custom invitation message for {candidateName}!" } });
-    expect(textarea.value).toBe("Custom invitation message for {candidateName}!");
+    fireEvent.change(textarea, {
+      target: { value: "Custom invitation message for {candidateName}!" },
+    });
+    expect(textarea.value).toBe(
+      "Custom invitation message for {candidateName}!",
+    );
   });
 
   test("disables send button when message is empty", () => {
@@ -199,9 +221,13 @@ describe("BulkInvitationComposer", () => {
     );
 
     const textarea = screen.getByLabelText(/Invitation Message/i);
-    fireEvent.change(textarea, { target: { value: "Hello {candidateName}, join our team!" } });
+    fireEvent.change(textarea, {
+      target: { value: "Hello {candidateName}, join our team!" },
+    });
 
-    const sendBtn = screen.getByRole("button", { name: /Send Invitations \(3\)/i });
+    const sendBtn = screen.getByRole("button", {
+      name: /Send Invitations \(3\)/i,
+    });
     fireEvent.click(sendBtn);
 
     await waitFor(() => {
@@ -244,7 +270,10 @@ describe("BulkInvitationComposer", () => {
       .spyOn(matchingApi, "sendInvitation")
       .mockImplementation((ideaId, candidateId) => {
         if (candidateId === "cand-1") {
-          return Promise.resolve({ success: true, invitation: { _id: "inv-1", status: "Pending" } });
+          return Promise.resolve({
+            success: true,
+            invitation: { _id: "inv-1", status: "Pending" },
+          });
         }
         if (candidateId === "cand-2") {
           const err = new Error("Invitation already exists");
@@ -271,7 +300,9 @@ describe("BulkInvitationComposer", () => {
       />,
     );
 
-    const sendBtn = screen.getByRole("button", { name: /Send Invitations \(3\)/i });
+    const sendBtn = screen.getByRole("button", {
+      name: /Send Invitations \(3\)/i,
+    });
     fireEvent.click(sendBtn);
 
     await waitFor(() => {
@@ -295,7 +326,10 @@ describe("BulkInvitationComposer", () => {
   test("AI generation populates message with template placeholder", async () => {
     const aiSpy = vi
       .spyOn(matchingApi, "generateInvitationMessage")
-      .mockResolvedValue({ message: "Hi Alice Smith, we are creating an exciting React project and would love to have you." });
+      .mockResolvedValue({
+        message:
+          "Hi Alice Smith, we are creating an exciting React project and would love to have you.",
+      });
 
     render(
       <BulkInvitationComposer
@@ -337,13 +371,17 @@ describe("BulkInvitationComposer", () => {
     );
 
     const textarea = screen.getByLabelText(/Invitation Message/i);
-    fireEvent.change(textarea, { target: { value: "My preserved founder draft." } });
+    fireEvent.change(textarea, {
+      target: { value: "My preserved founder draft." },
+    });
 
     const aiBtn = screen.getByRole("button", { name: /Generate with AI/i });
     fireEvent.click(aiBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/AI generation failed. Your current draft was kept./i)).toBeDefined();
+      expect(
+        screen.getByText(/AI generation failed. Your current draft was kept./i),
+      ).toBeDefined();
     });
 
     expect(textarea.value).toBe("My preserved founder draft.");

@@ -188,7 +188,9 @@ const GenerateTeamPage = () => {
     (role, candidateItems) => {
       const eligibleItems = candidateItems
         .slice(0, MAX_CANDIDATES_PER_ROLE)
-        .filter((item) => isCandidateEligibleForInvitation(item.invitationStatus));
+        .filter((item) =>
+          isCandidateEligibleForInvitation(item.invitationStatus),
+        );
 
       setSelectedCandidatesByRole((prev) => {
         const currentList = prev[role] || [];
@@ -617,7 +619,9 @@ const GenerateTeamPage = () => {
                                         }}
                                       >
                                         {selectedInRole.length} candidate
-                                        {selectedInRole.length !== 1 ? "s" : ""}{" "}
+                                        {selectedInRole.length !== 1
+                                          ? "s"
+                                          : ""}{" "}
                                         selected
                                       </span>
                                     </div>
