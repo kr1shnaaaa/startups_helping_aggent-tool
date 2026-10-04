@@ -35,7 +35,7 @@ const Sidebar = () => {
             <NavLink to="/app/talent" style={navLinkStyle}>
               Discover Talent
             </NavLink>
-            <NavLink to="/app/team" style={navLinkStyle}>
+            <NavLink to="/app/founder-team" style={navLinkStyle}>
               Team
             </NavLink>
             <NavLink to="/app/invitations" style={navLinkStyle}>

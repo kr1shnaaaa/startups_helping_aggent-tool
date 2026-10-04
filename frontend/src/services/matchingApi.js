@@ -103,3 +103,18 @@ export const getIdeaById = async (ideaId) => {
   const response = await client.get(`/ideas/${ideaId}`);
   return response.data;
 };
+
+export const listTeams = async () => {
+  const response = await client.get("/teams");
+  return response.data;
+};
+
+export const getTeam = async (teamId) => {
+  const response = await client.get(`/teams/${teamId}`);
+  return response.data;
+};
+
+export const addTeamMember = async (teamId, candidateId) => {
+  const response = await client.post(`/teams/${teamId}/members`, { candidateId });
+  return response.data;
+};

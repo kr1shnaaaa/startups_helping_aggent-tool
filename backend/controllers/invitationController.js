@@ -93,16 +93,44 @@ const getInvitation = async (req, res) => {
 
 const transition = async (req, res, action) => {
   if (!validId(req.params.invitationId)) return res.status(400).json({ success: false, message: 'Invalid invitation ID' });
+
   const user = await actor(req);
   if (!user) return res.status(401).json({ success: false, message: 'User profile not found' });
+
   const id = req.params.invitationId;
+  const invitation = await Invitation.findById(id).lean();
+  if (!invitation) return res.status(404).json({ success: false, message: 'Invitation not found' });
+
+  const isRecipient = String(invitation.toCandidate) === String(user._id);
+  const isFounder = String(invitation.fromFounder) === String(user._id);
+
+  if (action === 'withdraw') {
+    if (!isFounder) return res.status(403).json({ success: false, message: 'Only the founder who sent the invitation can withdraw it.', code: 'INVITATION_SENDER_ONLY' });
+  }
+
+  if (action === 'accept' || action === 'decline') {
+    if (!isRecipient) return res.status(403).json({ success: false, message: 'Only the invitation recipient can accept or decline this invitation.', code: 'INVITATION_RECIPIENT_ONLY' });
+  }
+
   const terminal = action === 'accept' ? 'Accepted' : action === 'decline' ? 'Declined' : 'Withdrawn';
-  const actorField = action === 'withdraw' ? 'fromFounder' : 'toCandidate';
-  const current = await Invitation.findOne({ _id: id, [actorField]: user._id }).lean();
-  if (!current) return res.status(404).json({ success: false, message: 'Invitation not found' });
-  if (current.status === terminal) return res.status(200).json({ success: true, invitation: current, idempotent: true });
-  if (current.status !== 'Pending') return res.status(409).json({ success: false, message: 'Invitation is no longer pending', code: 'STALE_INVITATION' });
-  const updated = await Invitation.findOneAndUpdate({ _id: id, [actorField]: user._id, status: 'Pending' }, { $set: { status: terminal, respondedAt: action === 'withdraw' ? undefined : new Date(), withdrawnAt: action === 'withdraw' ? new Date() : undefined } }, { new: true }).lean();
+  const current = await Invitation.findOne({ _id: id, status: 'Pending' }).lean();
+  if (!current) {
+    if (invitation.status === terminal) return res.status(200).json({ success: true, invitation, idempotent: true });
+    return res.status(409).json({ success: false, message: 'Invitation is no longer pending', code: 'STALE_INVITATION' });
+  }
+
+  const updated = await Invitation.findOneAndUpdate(
+    { _id: id, status: 'Pending' },
+    {
+      $set: {
+        status: terminal,
+        respondedAt: action === 'withdraw' ? undefined : new Date(),
+        withdrawnAt: action === 'withdraw' ? new Date() : undefined,
+      },
+    },
+    { new: true },
+  ).lean();
+
   if (!updated) return res.status(409).json({ success: false, message: 'Invitation state changed; retry', code: 'STALE_INVITATION' });
   return res.status(200).json({ success: true, invitation: updated });
 };

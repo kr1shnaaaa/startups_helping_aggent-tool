@@ -1442,33 +1442,91 @@ Purpose: Retrieves details of a specific invitation record.
 
 Purpose: Allows a candidate to accept an invitation, transitioning its status to `Accepted`.
 
+Important behavioral note:
+
+- This endpoint only changes the invitation state to `Accepted`.
+- It does not automatically create a team or assign team membership.
+- The backend remains strict: only a `Pending` invitation can be accepted.
+- If the invitation is `Withdrawn`, `Declined`, or already `Accepted`, the request returns a stale/duplicate-state response and no team is created.
+
 ### PUT /api/invitations/:invitationId/decline
 
 Purpose: Allows a candidate to decline an invitation, transitioning its status to `Declined`.
 
+Important behavioral note:
+
+- This transition is terminal for that invitation and does not create a team or team membership.
+- The invitation remains in history and can still be retrieved via `/api/invitations` with the `Declined` filter.
+
 ### PUT /api/invitations/:invitationId/withdraw
 
 Purpose: Allows a founder to withdraw an invitation before it is acted upon, transitioning its status to `Withdrawn`.
+
+Important behavioral note:
+
+- A `Withdrawn` invitation is historical only and must never become a team membership.
+- The candidate cannot accept or decline a withdrawn invitation.
 
 ## 9) Team APIs
 
 /_
 `POST /api/teams/` — Create team.
 `GET /api/teams/` — List teams.
+`POST /api/teams/:teamId/members` — Add an accepted candidate to an existing team.
 `GET /api/teams/:teamId` — Get team.
 _/
 
 ### POST /api/teams/
 
-Purpose: Creates a new team record for a startup idea once candidates have accepted invitations to join.
+Purpose: Creates a new team record for a startup idea once accepted invitations are ready to be formed into a team.
+
+Important behavioral note:
+
+- This endpoint is not triggered by `PUT /api/invitations/:invitationId/accept`.
+- A founder must create the team explicitly after a candidate accepts an invitation for the relevant idea.
+- The API looks for `Accepted` invitations on that idea that do not yet have a `teamId`, and then creates one team record with the founder and members.
+- A team is one-per-idea, enforced by the unique `ideaId` index on the `Team` model.
 
 ### GET /api/teams/
 
 Purpose: Lists all teams that the currently authenticated user is a founder or member of.
 
+Example successful response shape:
+
+```json
+{
+  "success": true,
+  "teams": [
+    {
+      "_id": "ObjectId",
+      "name": "Campus Launchpad",
+      "ideaId": "ObjectId",
+      "founderId": { "_id": "ObjectId", "name": "Riya Shah" },
+      "members": [
+        {
+          "userId": { "_id": "ObjectId", "name": "Ava" },
+          "role": "Frontend Engineer",
+          "invitationId": "ObjectId",
+          "joinedAt": "ISO date"
+        }
+      ],
+      "status": "Active",
+      "createdAt": "ISO date",
+      "updatedAt": "ISO date"
+    }
+  ]
+}
+```
+
 ### GET /api/teams/:teamId
 
 Purpose: Retrieves details of a specific team, including all members and the founder.
+
+Frontend note:
+
+- `GET /api/teams` does not populate `ideaId` with the idea title by default.
+- If the UI needs the idea title, it should fetch the idea by its ID from `/api/ideas/:ideaId` using the actual backend data.
+- Do not invent a team from invitation data when a real Team record exists.
 
 ## 10) Frontend integration notes
 

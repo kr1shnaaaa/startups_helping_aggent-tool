@@ -120,6 +120,87 @@ const createTeam = async (req, res) => {
   }
 };
 
+const addTeamMember = async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    const { candidateId } = req.body;
+
+    if (!isValidId(teamId)) {
+      return res.status(400).json({ success: false, message: 'Invalid team ID format', code: 'INVALID_ID' });
+    }
+
+    if (!isValidId(candidateId)) {
+      return res.status(400).json({ success: false, message: 'Invalid candidate ID format', code: 'INVALID_CANDIDATE_ID' });
+    }
+
+    const founder = await getAuthenticatedUser(req);
+    if (!founder) {
+      return res.status(401).json({ success: false, message: 'User profile not found', code: 'USER_NOT_FOUND' });
+    }
+
+    const team = await Team.findById(teamId).lean();
+    if (!team) {
+      return res.status(404).json({ success: false, message: 'Team not found', code: 'TEAM_NOT_FOUND' });
+    }
+
+    if (String(team.founderId) !== String(founder._id)) {
+      return res.status(403).json({ success: false, message: 'Only the team founder can add members', code: 'FORBIDDEN' });
+    }
+
+    if (String(candidateId) === String(founder._id)) {
+      return res.status(409).json({ success: false, message: 'The founder cannot be added as a team member', code: 'INVALID_MEMBER' });
+    }
+
+    const alreadyMember = team.members.some((member) => String(member.userId) === String(candidateId));
+    if (alreadyMember) {
+      return res.status(409).json({ success: false, message: 'Candidate is already a team member', code: 'ALREADY_TEAM_MEMBER' });
+    }
+
+    const candidate = await User.findById(candidateId).lean();
+    if (!candidate) {
+      return res.status(404).json({ success: false, message: 'Candidate not found', code: 'CANDIDATE_NOT_FOUND' });
+    }
+
+    const acceptedInvitation = await Invitation.findOne({
+      ideaId: team.ideaId,
+      toCandidate: candidateId,
+      status: 'Accepted',
+    }).sort({ createdAt: -1 }).lean();
+
+    if (!acceptedInvitation) {
+      return res.status(409).json({ success: false, message: 'Only accepted invitations can be added to a team', code: 'INVITATION_NOT_ACCEPTED' });
+    }
+
+    const updatedTeam = await Team.findByIdAndUpdate(
+      teamId,
+      {
+        $push: {
+          members: {
+            userId: candidateId,
+            role: acceptedInvitation.role || 'Team member',
+            invitationId: acceptedInvitation._id,
+            joinedAt: new Date(),
+          },
+        },
+      },
+      { new: true },
+    )
+      .populate('founderId', 'name profileImage college location')
+      .populate('members.userId', 'name profileImage college location skills targetRoles domainInterests availability workPreference hoursPerWeek')
+      .lean();
+
+    await Invitation.updateOne(
+      { _id: acceptedInvitation._id },
+      { $set: { teamId: teamId } },
+    );
+
+    return res.status(200).json({ success: true, message: 'Candidate added to team', team: updatedTeam });
+  } catch (error) {
+    console.error('[ERROR] POST /teams/:teamId/members:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to add team member', code: 'TEAM_MEMBER_CREATE_FAILED' });
+  }
+};
+
 const getTeam = async (req, res) => {
   try {
     const { teamId } = req.params;
@@ -178,4 +259,4 @@ const listTeams = async (req, res) => {
   }
 };
 
-module.exports = { createTeam, getTeam, listTeams };
+module.exports = { createTeam, getTeam, listTeams, addTeamMember };
