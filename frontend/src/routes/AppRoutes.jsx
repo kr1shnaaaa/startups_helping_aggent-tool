@@ -9,6 +9,7 @@ import EnhanceIdeaPage from "../pages/dashboard/EnhanceIdeaPage";
 import AnalyzeIdeaPage from "../pages/dashboard/AnalyzeIdeaPage";
 import IdeaDetailPage from "../pages/dashboard/IdeaDetailPage";
 import GenerateTeamPage from "../pages/dashboard/GenerateTeamPage";
+import CandidateInvitationsPage from "../pages/dashboard/CandidateInvitationsPage";
 import FeaturePage from "../pages/FeaturePage";
 import RoleSelectionPage from "../pages/onboarding/RoleSelectionPage";
 import FounderOnboarding from "../pages/onboarding/FounderOnboarding";
@@ -89,12 +90,7 @@ const AppRoutes = () => (
         path="/app/team"
         element={<FeaturePage title="Team" description="Manage your team." />}
       />
-      <Route
-        path="/app/invitations"
-        element={
-          <FeaturePage title="Invitations" description="Manage invitations." />
-        }
-      />
+      <Route path="/app/invitations" element={<CandidateInvitationsPage />} />
       <Route
         path="/app/explore"
         element={
