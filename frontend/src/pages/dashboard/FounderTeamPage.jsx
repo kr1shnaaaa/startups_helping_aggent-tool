@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import Badge from "../../components/common/Badge";
 import Button from "../../components/common/Button";
 import Card from "../../components/common/Card";
 import { useAuth } from "../../hooks/useAuth";
-import { getMyIdeas } from "../../services/ideaApi";
+import { getIdeaById, getMyIdeas } from "../../services/ideaApi";
 import {
   addTeamMember,
   createTeam,
   listInvitations,
   listTeams,
 } from "../../services/matchingApi";
+import { calculateTeamCompletion } from "../../utils/teamCompletion";
 
 const normalizeList = (payload, key) => {
   if (Array.isArray(payload)) return payload;
@@ -37,6 +39,7 @@ const formatDate = (value) => {
 
 const FounderTeamPage = () => {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [ideas, setIdeas] = useState([]);
   const [teams, setTeams] = useState([]);
   const [acceptedInvitations, setAcceptedInvitations] = useState([]);
@@ -48,22 +51,32 @@ const FounderTeamPage = () => {
 
   const fetchData = useCallback(async () => {
     const [ideaResponse, teamResponse, invitationResponse] = await Promise.all([
-        getMyIdeas(),
-        listTeams(),
-        listInvitations("sent", "Accepted"),
-      ]);
+      getMyIdeas(),
+      listTeams(),
+      listInvitations("sent", "Accepted"),
+    ]);
+    const ideaDetails = await Promise.all(
+      normalizeList(ideaResponse, "ideas").map(async (idea) => {
+        const response = await getIdeaById(getId(idea?._id));
+        return response?.idea || response;
+      }),
+    );
+
     return {
-      ideas: normalizeList(ideaResponse, "ideas"),
+      ideas: ideaDetails,
       teams: normalizeList(teamResponse, "teams"),
       invitations: normalizeList(invitationResponse, "invitations"),
     };
   }, []);
 
-  const applyData = useCallback(({ ideas: nextIdeas, teams: nextTeams, invitations }) => {
-    setIdeas(nextIdeas);
-    setTeams(nextTeams);
-    setAcceptedInvitations(invitations);
-  }, []);
+  const applyData = useCallback(
+    ({ ideas: nextIdeas, teams: nextTeams, invitations }) => {
+      setIdeas(nextIdeas);
+      setTeams(nextTeams);
+      setAcceptedInvitations(invitations);
+    },
+    [],
+  );
 
   const applyLoadError = useCallback((requestError) => {
     const status = requestError?.status || requestError?.response?.status;
@@ -157,6 +170,12 @@ const FounderTeamPage = () => {
     });
   };
 
+  const handleFindCandidates = (ideaId, role) => {
+    navigate(
+      `/app/ideas/${ideaId}/matching?role=${encodeURIComponent(role)}`,
+    );
+  };
+
   const confirmAddMember = async () => {
     if (!confirmation) return;
     setPendingCandidateId(confirmation.candidateId);
@@ -208,7 +227,8 @@ const FounderTeamPage = () => {
         <div style={{ marginBottom: "var(--space-lg)" }}>
           <h1 style={{ margin: 0 }}>My Team</h1>
           <p style={{ margin: "8px 0 0", color: "var(--muted)" }}>
-            Create teams for your ideas and add candidates who accepted your invitations.
+            Create teams for your ideas and add candidates who accepted your
+            invitations.
           </p>
         </div>
 
@@ -245,6 +265,11 @@ const FounderTeamPage = () => {
               const memberList = Array.isArray(team?.members)
                 ? team.members
                 : [];
+              const approved = idea?.aiAnalysis?.isApproved === true;
+              const completion = calculateTeamCompletion(
+                approved ? idea?.aiAnalysis?.rolesAndSkills : [],
+                memberList,
+              );
               const teamMemberIds = new Set(
                 memberList.map((member) => getId(member?.userId)),
               );
@@ -280,7 +305,9 @@ const FounderTeamPage = () => {
                         onClick={() => handleCreateTeam(idea)}
                         disabled={pendingIdeaId === ideaId}
                       >
-                        {pendingIdeaId === ideaId ? "Creating..." : "Create Team"}
+                        {pendingIdeaId === ideaId
+                          ? "Creating..."
+                          : "Create Team"}
                       </Button>
                     </Card>
                   ) : (
@@ -295,7 +322,9 @@ const FounderTeamPage = () => {
                         }}
                       >
                         <h2 style={{ margin: 0 }}>{team.name}</h2>
-                        <Badge variant="accent">{team.status || "Active"}</Badge>
+                        <Badge variant="accent">
+                          {team.status || "Active"}
+                        </Badge>
                       </div>
                       <p
                         style={{
@@ -305,6 +334,80 @@ const FounderTeamPage = () => {
                       >
                         <strong>Idea:</strong> {ideaTitle}
                       </p>
+                      <section style={{ margin: "var(--space-lg) 0" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: "var(--space-sm)",
+                            marginBottom: "var(--space-sm)",
+                          }}
+                        >
+                          <h3 style={{ margin: 0 }}>Team Completion</h3>
+                          <strong>{completion.percentage}%</strong>
+                        </div>
+                        <div
+                          role="progressbar"
+                          aria-label="Team completion"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={completion.percentage}
+                          style={{
+                            height: "8px",
+                            background: "var(--line)",
+                            borderRadius: "var(--radius-sm)",
+                            overflow: "hidden",
+                            marginBottom: "var(--space-md)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${completion.percentage}%`,
+                              height: "100%",
+                              background: "var(--accent)",
+                            }}
+                          />
+                        </div>
+                        {completion.complete && (
+                          <p
+                            role="status"
+                            style={{ color: "var(--accent-dark)", fontWeight: 600 }}
+                          >
+                            ✓ Team Complete. All required positions are filled.
+                          </p>
+                        )}
+                        {!approved ? (
+                          <p style={{ color: "var(--muted)" }}>
+                            Approve this idea's analysis to view required team positions.
+                          </p>
+                        ) : completion.roles.length === 0 ? (
+                          <p style={{ color: "var(--muted)" }}>
+                            No required roles are defined for this approved idea.
+                          </p>
+                        ) : (
+                          <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+                            {completion.roles.map((role) => (
+                              <div
+                                key={role.role}
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: "var(--space-sm)",
+                                  borderBottom: "1px solid var(--line)",
+                                  padding: "var(--space-sm) 0",
+                                }}
+                              >
+                                <span>{role.role}</span>
+                                <strong>
+                                  {role.filled}/{role.required}
+                                  {role.remaining === 0 ? " ✓" : ""}
+                                </strong>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
                       <h3 style={{ margin: "0 0 var(--space-sm)" }}>
                         Team Members
                       </h3>
@@ -319,7 +422,9 @@ const FounderTeamPage = () => {
                         <div style={{ fontWeight: 600 }}>
                           {founder.name || "Founder"}
                         </div>
-                        <div style={{ color: "var(--muted)", marginTop: "4px" }}>
+                        <div
+                          style={{ color: "var(--muted)", marginTop: "4px" }}
+                        >
                           Founder
                         </div>
                       </div>
@@ -328,10 +433,13 @@ const FounderTeamPage = () => {
                           No candidates have joined yet.
                         </p>
                       ) : (
-                        <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+                        <div
+                          style={{ display: "grid", gap: "var(--space-sm)" }}
+                        >
                           {memberList.map((member, index) => {
                             const memberUser =
-                              typeof member?.userId === "object" && member.userId
+                              typeof member?.userId === "object" &&
+                              member.userId
                                 ? member.userId
                                 : {};
                             return (
@@ -367,6 +475,54 @@ const FounderTeamPage = () => {
                           })}
                         </div>
                       )}
+                      <section style={{ marginTop: "var(--space-lg)" }}>
+                        <h3 style={{ margin: "0 0 var(--space-sm)" }}>
+                          Missing Roles
+                        </h3>
+                        {completion.roles.filter((role) => role.remaining > 0)
+                          .length === 0 ? (
+                          <p style={{ color: "var(--muted)" }}>
+                            {completion.complete
+                              ? "All required positions are filled."
+                              : "No missing roles to show."}
+                          </p>
+                        ) : (
+                          <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+                            {completion.roles
+                              .filter((role) => role.remaining > 0)
+                              .map((role) => (
+                                <div
+                                  key={role.role}
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: "var(--space-md)",
+                                    flexWrap: "wrap",
+                                    border: "1px solid var(--line)",
+                                    borderRadius: "var(--radius-sm)",
+                                    padding: "var(--space-sm)",
+                                  }}
+                                >
+                                  <div>
+                                    <div style={{ fontWeight: 600 }}>{role.role}</div>
+                                    <div style={{ color: "var(--muted)" }}>
+                                      {role.filled}/{role.required}
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="secondary"
+                                    onClick={() =>
+                                      handleFindCandidates(ideaId, role.role)
+                                    }
+                                  >
+                                    Find Candidates
+                                  </Button>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </section>
                     </Card>
                   )}
 
@@ -374,7 +530,8 @@ const FounderTeamPage = () => {
                     <h3 style={{ marginTop: 0 }}>Accepted Candidates</h3>
                     {waitingCandidates.length === 0 ? (
                       <p style={{ marginBottom: 0, color: "var(--muted)" }}>
-                        No accepted candidates are waiting to be added to this team.
+                        No accepted candidates are waiting to be added to this
+                        team.
                       </p>
                     ) : (
                       <div style={{ display: "grid", gap: "var(--space-md)" }}>
@@ -406,7 +563,9 @@ const FounderTeamPage = () => {
                               </div>
                               {team ? (
                                 <Button
-                                  onClick={() => handleAddMember(idea, invitation)}
+                                  onClick={() =>
+                                    handleAddMember(idea, invitation)
+                                  }
                                   disabled={pendingCandidateId === candidateId}
                                 >
                                   {pendingCandidateId === candidateId

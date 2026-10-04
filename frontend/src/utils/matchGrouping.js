@@ -53,9 +53,7 @@ export const rolesMatch = (left, right) => {
       second.includes("developer") ||
       second.includes("engineer") ||
       first.includes("backend") ||
-      first.includes("frontend") ||
-      second.includes("backend") ||
-      second.includes("frontend")
+      first.includes("frontend")
     ) {
       return true;
     }
@@ -64,6 +62,11 @@ export const rolesMatch = (left, right) => {
   const firstTokens = tokenizeRoleKey(left);
   const secondTokens = tokenizeRoleKey(right);
   return firstTokens.some((token) => secondTokens.includes(token));
+};
+
+export const focusMatchGroups = (groups = [], roleName = "") => {
+  if (!roleName) return groups;
+  return groups.filter((group) => rolesMatch(group?.role, roleName));
 };
 
 export const getMatchCardData = (item = {}) => {

@@ -98,13 +98,13 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
   const currentUserId = profile?._id ? String(profile._id) : "";
   const currentUserMatchesFounder = Boolean(
     currentUserId &&
-      String(invitation?.fromFounder?._id || invitation?.fromFounder) ===
-        currentUserId,
+    String(invitation?.fromFounder?._id || invitation?.fromFounder) ===
+      currentUserId,
   );
   const currentUserMatchesCandidate = Boolean(
     currentUserId &&
-      String(invitation?.toCandidate?._id || invitation?.toCandidate) ===
-        currentUserId,
+    String(invitation?.toCandidate?._id || invitation?.toCandidate) ===
+      currentUserId,
   );
   const inferredFounderSender =
     profileType === "founder" && Boolean(invitation?._id);
@@ -118,7 +118,9 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
   const actionInFlight = pendingAction !== null;
   const canWithdraw = invitation?.status === "Pending" && isFounderSender;
   const canRespond =
-    invitation?.status === "Pending" && !isFounderSender && isCandidateRecipient;
+    invitation?.status === "Pending" &&
+    !isFounderSender &&
+    isCandidateRecipient;
 
   if (!invitation) return null;
 
@@ -135,15 +137,16 @@ const InvitationDetailsModal = ({ invitation, onClose, onStatusChange }) => {
           : action === "decline"
             ? await declineInvitation(invitation._id)
             : await withdrawInvitation(invitation._id);
-      const updatedInvitation = response?.invitation || response || {
-        ...invitation,
-        status:
-          action === "accept"
-            ? "Accepted"
-            : action === "decline"
-              ? "Declined"
-              : "Withdrawn",
-      };
+      const updatedInvitation = response?.invitation ||
+        response || {
+          ...invitation,
+          status:
+            action === "accept"
+              ? "Accepted"
+              : action === "decline"
+                ? "Declined"
+                : "Withdrawn",
+        };
       onStatusChange?.(updatedInvitation);
       setPendingAction(null);
     } catch (error) {

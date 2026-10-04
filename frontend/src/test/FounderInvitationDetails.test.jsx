@@ -1,7 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const mockAuth = { profile: { _id: "founder-1", name: "Riya Shah" }, profileType: "founder" };
+const mockAuth = {
+  profile: { _id: "founder-1", name: "Riya Shah" },
+  profileType: "founder",
+};
 
 vi.mock("../hooks/useAuth", () => ({
   useAuth: () => mockAuth,
@@ -42,7 +45,11 @@ describe("Founder invitation details", () => {
           ideaId: "idea-1",
           fromFounder: { _id: "founder-1", name: "Riya Shah" },
           toCandidate: { _id: "candidate-1", name: "Ava" },
-          matchContext: { score: 92, matchedSkills: ["React"], missingSkills: [] },
+          matchContext: {
+            score: 92,
+            matchedSkills: ["React"],
+            missingSkills: [],
+          },
         }}
         onClose={() => {}}
         onStatusChange={() => {}}
@@ -70,7 +77,11 @@ describe("Founder invitation details", () => {
           ideaId: "idea-1",
           fromFounder: { _id: "founder-1", name: "Riya Shah" },
           toCandidate: { _id: "candidate-1", name: "Ava" },
-          matchContext: { score: 92, matchedSkills: ["React"], missingSkills: [] },
+          matchContext: {
+            score: 92,
+            matchedSkills: ["React"],
+            missingSkills: [],
+          },
         }}
         onClose={() => {}}
         onStatusChange={() => {}}
@@ -78,7 +89,9 @@ describe("Founder invitation details", () => {
     );
 
     expect(await screen.findByText("Campus Launchpad")).toBeDefined();
-    const acceptButton = screen.getByRole("button", { name: /Accept Invitation/i });
+    const acceptButton = screen.getByRole("button", {
+      name: /Accept Invitation/i,
+    });
     const declineButton = screen.getByRole("button", { name: /Decline/i });
     fireEvent.click(acceptButton);
     fireEvent.click(declineButton);

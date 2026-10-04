@@ -1,11 +1,23 @@
 import { describe, expect, test } from 'vitest';
 import {
+  focusMatchGroups,
   groupMatchesByRequiredRoles,
   MAX_CANDIDATES_PER_ROLE,
   normalizeInvitationStatus,
 } from '../utils/matchGrouping';
 
 describe('groupMatchesByRequiredRoles', () => {
+  test('keeps all generated groups without a focus role and filters compatibly when focused', () => {
+    const groups = [
+      { role: 'Backend Developer', candidates: [] },
+      { role: 'Frontend Developer', candidates: [] },
+    ];
+
+    expect(focusMatchGroups(groups)).toBe(groups);
+    expect(focusMatchGroups(groups, 'Full Stack Developer')).toEqual(groups);
+    expect(focusMatchGroups(groups, 'Backend Developer')).toEqual([groups[0]]);
+  });
+
   test('keeps backend ranking and caps each role at eight candidates', () => {
     const rolesAndSkills = [
       { role: 'Frontend Developer', skills: ['React'] },

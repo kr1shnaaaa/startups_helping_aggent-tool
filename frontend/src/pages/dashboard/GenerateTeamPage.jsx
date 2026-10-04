@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import Button from "../../components/common/Button";
 import Card from "../../components/common/Card";
@@ -10,6 +10,7 @@ import CandidateCard from "../../components/matching/CandidateCard";
 import CandidateProfileModal from "../../components/matching/CandidateProfileModal";
 import BulkInvitationComposer from "../../components/matching/BulkInvitationComposer";
 import {
+  focusMatchGroups,
   groupMatchesByRequiredRoles,
   MAX_CANDIDATES_PER_ROLE,
   normalizeInvitationStatus,
@@ -54,6 +55,8 @@ const getUserFriendlyError = (err, fallback = "Something went wrong") => {
 
 const GenerateTeamPage = () => {
   const { ideaId } = useParams();
+  const [searchParams] = useSearchParams();
+  const requestedRole = searchParams.get("role")?.trim() || "";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [idea, setIdea] = useState(null);
@@ -370,6 +373,10 @@ const GenerateTeamPage = () => {
   };
 
   const rolesAndSkills = idea?.aiAnalysis?.rolesAndSkills || [];
+  const visibleRoleGroups = focusMatchGroups(
+    generateTeamResults || [],
+    requestedRole,
+  );
   const ideaTitle = idea?.title || "Idea";
 
   const handleInvitationStateChange = useCallback(() => {
@@ -404,6 +411,11 @@ const GenerateTeamPage = () => {
           <p style={{ color: "var(--muted)" }}>
             {ideaTitle} — Find the right people for your startup.
           </p>
+          {requestedRole && (
+            <p style={{ color: "var(--muted)" }}>
+              Showing candidate matches for {requestedRole}.
+            </p>
+          )}
         </header>
 
         {!analysisApproved ? (
@@ -488,21 +500,22 @@ const GenerateTeamPage = () => {
                   !generateTeamError &&
                   generateTeamResults && (
                     <>
-                      {generateTeamResults.length === 0 && (
+                      {visibleRoleGroups.length === 0 && (
                         <Card>
                           <h3>No matching candidates found yet.</h3>
                           <p style={{ color: "var(--muted)" }}>
-                            No role-wise recommendations could be generated. Try
-                            the Candidates tab to search manually.
+                            {requestedRole
+                              ? `No matching role recommendations are available for ${requestedRole}.`
+                              : "No role-wise recommendations could be generated. Try the Candidates tab to search manually."}
                           </p>
                         </Card>
                       )}
 
-                      {generateTeamResults.length > 0 && (
+                      {visibleRoleGroups.length > 0 && (
                         <div
                           style={{ display: "grid", gap: "var(--space-lg)" }}
                         >
-                          {generateTeamResults.map((roleGroup, idx) => {
+                          {visibleRoleGroups.map((roleGroup, idx) => {
                             const selectedInRole =
                               selectedCandidatesByRole[roleGroup.role] || [];
                             const eligibleInRole = roleGroup.candidates
