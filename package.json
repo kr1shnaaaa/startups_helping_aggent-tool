@@ -1,26 +1,16 @@
 {
-  "dependencies": {
-    "@ai-sdk/google": "^4.0.63",
-    "ai": "^7.0.92",
-    "axios": "^1.19.0",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "firebase": "^12.17.1",
-    "mongodb": "^7.5.0",
-    "mongoose": "^9.9.3"
-  },
   "name": "research_project",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "StartupLink monorepo setup for local development",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "setup": "node scripts/setup.js",
+    "dev": "node scripts/dev.js",
+    "dev:backend": "npm --prefix ./backend run dev",
+    "dev:frontend": "npm --prefix ./frontend run dev",
+    "build": "npm --prefix ./frontend run build",
+    "validate": "node scripts/setup.js --validate"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "nodemon": "^3.1.14"
-  }
+  "type": "commonjs"
 }
