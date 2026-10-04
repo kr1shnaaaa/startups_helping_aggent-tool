@@ -35,7 +35,12 @@ import {
 
 const LocationDisplay = () => {
   const location = useLocation();
-  return <output data-testid="location">{location.pathname}{location.search}</output>;
+  return (
+    <output data-testid="location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
 };
 
 describe("FounderTeamPage", () => {
@@ -240,16 +245,18 @@ describe("FounderTeamPage", () => {
       </MemoryRouter>,
     );
 
-    expect((await screen.findByRole("progressbar")).getAttribute("aria-valuenow")).toBe(
-      "33",
-    );
+    expect(
+      (await screen.findByRole("progressbar")).getAttribute("aria-valuenow"),
+    ).toBe("33");
     expect(screen.getAllByText("Backend Developer").length).toBeGreaterThan(0);
     expect(screen.getByText("1/1 ✓")).toBeDefined();
     expect(screen.getAllByText("Frontend Developer").length).toBeGreaterThan(0);
     expect(screen.getAllByText("0/2").length).toBeGreaterThan(0);
     expect(screen.getByText("Alex Frontend")).toBeDefined();
     expect(screen.getByText("Morgan Backend")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Find Candidates" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Find Candidates" }),
+    ).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Find Candidates" }));
     expect(screen.getByTestId("location").textContent).toBe(
@@ -298,7 +305,9 @@ describe("FounderTeamPage", () => {
 
     expect(await screen.findByText("100%")).toBeDefined();
     expect(
-      await screen.findByText("✓ Team Complete. All required positions are filled."),
+      await screen.findByText(
+        "✓ Team Complete. All required positions are filled.",
+      ),
     ).toBeDefined();
     expect(screen.queryByText(/your startup will succeed/i)).toBeNull();
   });

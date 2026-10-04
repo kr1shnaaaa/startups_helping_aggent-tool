@@ -171,9 +171,7 @@ const FounderTeamPage = () => {
   };
 
   const handleFindCandidates = (ideaId, role) => {
-    navigate(
-      `/app/ideas/${ideaId}/matching?role=${encodeURIComponent(role)}`,
-    );
+    navigate(`/app/ideas/${ideaId}/matching?role=${encodeURIComponent(role)}`);
   };
 
   const confirmAddMember = async () => {
@@ -372,21 +370,28 @@ const FounderTeamPage = () => {
                         {completion.complete && (
                           <p
                             role="status"
-                            style={{ color: "var(--accent-dark)", fontWeight: 600 }}
+                            style={{
+                              color: "var(--accent-dark)",
+                              fontWeight: 600,
+                            }}
                           >
                             ✓ Team Complete. All required positions are filled.
                           </p>
                         )}
                         {!approved ? (
                           <p style={{ color: "var(--muted)" }}>
-                            Approve this idea's analysis to view required team positions.
+                            Approve this idea's analysis to view required team
+                            positions.
                           </p>
                         ) : completion.roles.length === 0 ? (
                           <p style={{ color: "var(--muted)" }}>
-                            No required roles are defined for this approved idea.
+                            No required roles are defined for this approved
+                            idea.
                           </p>
                         ) : (
-                          <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+                          <div
+                            style={{ display: "grid", gap: "var(--space-sm)" }}
+                          >
                             {completion.roles.map((role) => (
                               <div
                                 key={role.role}
@@ -487,7 +492,9 @@ const FounderTeamPage = () => {
                               : "No missing roles to show."}
                           </p>
                         ) : (
-                          <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+                          <div
+                            style={{ display: "grid", gap: "var(--space-sm)" }}
+                          >
                             {completion.roles
                               .filter((role) => role.remaining > 0)
                               .map((role) => (
@@ -505,7 +512,9 @@ const FounderTeamPage = () => {
                                   }}
                                 >
                                   <div>
-                                    <div style={{ fontWeight: 600 }}>{role.role}</div>
+                                    <div style={{ fontWeight: 600 }}>
+                                      {role.role}
+                                    </div>
                                     <div style={{ color: "var(--muted)" }}>
                                       {role.filled}/{role.required}
                                     </div>
